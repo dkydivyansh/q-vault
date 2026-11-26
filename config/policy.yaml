@@ -1,0 +1,54 @@
+rotation:
+  grace_period_seconds: 30
+  interval_seconds: 300
+
+clock_skew:
+  tolerance_seconds: 5
+
+anti_replay:
+  window_size: 1024
+  sequence_bits: 64
+
+session_resumption:
+  ticket_ttl_seconds: 3600
+
+service_graph:
+  allowed_paths:
+    - [WebPortal, Auth]
+    - [WebPortal, FileGateway]
+    - [Auth, Billing]
+    - [Auth, UserDB]
+    - [FileGateway, VaultDB]
+    - [Billing, PayrollDB]
+    - [Admin, Auth]
+    - [Admin, UserDB]
+    - [Admin, VaultDB]
+    - [Admin, Billing]
+    - [Admin, PayrollDB]
+  lateral_movement_window_seconds: 60
+  lateral_movement_max_hops: 3
+
+detection:
+  critical_severity_threshold: 0.85
+  rules:
+    - id: PRIV_ESC_001
+      name: Unauthorized Privilege Escalation
+      description: Standard user granted elevated privileges without admin context
+    - id: LAT_MOVE_001
+      name: Lateral Movement via Service Graph
+      description: Credential used to access service outside allowed graph paths
+    - id: REPLAY_001
+      name: Replay Attack Detected
+      description: Duplicate sequence number seen in anti-replay window
+    - id: CLOCK_001
+      name: Clock Skew Exceeded
+      description: Event timestamp outside acceptable clock tolerance window
+
+ledger:
+  checkpoint_interval: 100
+  algorithm: ML-DSA-65
+
+authority:
+  key_algorithm: ML-DSA-65
+  kem_algorithm: ML-KEM-768
+  hybrid_kem: true
