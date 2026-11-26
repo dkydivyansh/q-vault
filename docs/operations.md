@@ -165,7 +165,7 @@ from src.app.config import SentinelConfig, load_policy, load_config
 | `re_enroll_service_node` | `(previous_node_id: str, new_node_id: str) -> dict` | Provisions fresh PQC keys for `new_node_id` while enforcing permanent revocation on `previous_node_id`. |
 | `get_epoch_status` | `(query_epoch: int \| None = None, offset_seconds: float = 0.0) -> dict` | Evaluates `is_epoch_valid()` for a target epoch at `now + offset_seconds` alongside grace-window telemetry. |
 | `probe_replay_rejection` / `probe_aad_tampering` / `probe_resumption_hijack` / `probe_backup_tamper` / `probe_clock_skew` | `(defaults)` -> `dict` | Executes live cryptographic and detector verification probes directly against SDK primitives and logs audited outcomes. |
-| `get_snapshot` | `() -> dict` | Returns control-plane telemetry (`current_epoch`, `revocation_epoch`, `checkpoint_interval`, `epoch_status`, `nodes`, `revocations`, `recent_backups`, `alerts`, `metrics`, `service_graph`, `ledger_summary`, `recent_entries`). |
+| `get_snapshot` | `() -> dict` | Returns control-plane telemetry (`current_epoch`, `revocation_epoch`, `checkpoint_interval`, `epoch_status`, `nodes`, `revocations`, `recent_backups`, `alerts`, `metrics`, `service_graph`, `ledger_summary`, `chain_verified`, `chain_integrity_pct`, `pipeline_stats`, `recent_entries`). |
 | `close` | `() -> None` | Closes underlying `KeyAuthority` SQLite WAL connection. |
 
 ---
@@ -312,10 +312,10 @@ Each service gateway (`WebPortal`, `Auth`, `FileGateway`, `Billing`, `UserDB`, `
 
 ## 7. Web Console (`GET /`)
 
-Serving `src/app/static/index.html` at `http://<host>:<port>/`, the console renders a true-black (`#000000`) dark-theme workspace organized across four accessible tabs:
+Serving `src/app/static/index.html` at `http://<host>:<port>/`, the console renders a monochrome obsidian (`#000000` canvas, `#08080a` surfaces, `1px` structural hairlines, `#ff3b5c` containment highlights) four-tab workspace:
 
-* **Global Command Bar & Operational Telemetry Strip:** Sticky header with authority health indicator, `Refresh`, `Rotate epoch`, and `Verify chain` actions paired with live counters (`Active key epoch`, `Service identities`, `Watchdog alerts`, `Audit records` with next `ML-DSA-65` checkpoint cadence).
-* **Overview:** Interactive SVG **Service Access Topology** rendering policy edges, unauthorized lateral-movement hops, and clickable service nodes paired with a **Selected service node** inspector (`Revoke credentials` / `Re-enroll replacement`), **Send encrypted message** form (`POST /api/v1/gateway/transfer`), and **Watchdog security alerts** table.
-* **Identities & Lifecycle:** Epoch grace-window inspector (`GET /api/v1/authority/epoch-check`), `.qvbak` signed backup creation, restoration, and 1-byte tamper verification (`POST /api/v1/probes/backup-tamper`), plus responsive service registry with credential revocation and replacement re-enrollment modals (`<dialog>`).
-* **Security Lab:** Live cryptographic protocol probes (anti-replay bitmask rejection, recipient AAD substitution `InvalidTag`, peer-bound session resumption hijack & single-use replay) alongside deterministic watchdog tests (multi-hop lateral movement, `PRIV_ESC_001` vs. `Admin` context rules, and `±5s` clock-skew flush verification).
-* **Audit Ledger:** Filterable canonical `SHA-256` ledger view explaining periodic `ML-DSA-65` checkpointing (`checkpoint_signature: null` on intermediate chained records) with clickable row modals inspecting full record JSON payloads.
+* **Consolidated 56px Sticky Top Bar:** Single-row navigation (`Overview`, `Identities`, `Security Lab`, `Audit Ledger`), live epoch/containment indicator, `Refresh`, `Verify`, and inverted primary `Rotate epoch` CTA, paired with a footer status ticker and bottom-right manual toast region.
+* **Overview:** Four borderless KPI columns synced to a high-DPI `<canvas>` **Security Pipeline Dot-Matrix Flow Chart** (`Handshakes -> AAD Verified -> Policy Allowed -> Ledger Anchored` with dynamic containment drop-off pills), an asymmetric `62% / 38%` split pairing the cubic-Bezier SVG **Service Access Topology** (dot-grid backdrop, hover path isolation, diagonal-hatched revoked nodes) with node inspection, copyable fingerprint chips, **Send encrypted message** trace checklist, and the **Watchdog security alerts** table.
+* **Identities:** Split **Epoch Rotation & Grace Window** countdown progress bar and **Signed Key Backups (`.qvbak`)** panel above the full-width **Service Node Registry**.
+* **Security Lab:** Borderless deterministic detector metrics strip above hairline-separated cryptographic protocol checks (with 1,024-bit sliding replay window visual strip) and deterministic watchdog checks rendering structured execution checklists and collapsible raw JSON views.
+* **Audit Ledger:** Filterable canonical `SHA-256` record table opening a right-side `420px` slide-over inspector drawer (`<dialog class="drawer">`) with keyboard `Up`/`Down` record stepping and explicit `ML-DSA-65` checkpoint vs. `checkpoint_signature: null` status details.

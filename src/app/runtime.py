@@ -78,6 +78,7 @@ class SentinelRuntime:
 
         self.gateways: Dict[str, NodeGateway] = {}
         self.keypairs: Dict[str, Any] = {}
+        self._last_rotation: Optional[dict] = None
         self.authority.register_revocation_callback(self._broadcast_revocation)
         self.ledger.register_sink(self._on_ledger_entry)
 
@@ -271,6 +272,13 @@ class SentinelRuntime:
     def rotate_epoch(self) -> dict:
         """Rotate the active cryptographic epoch and record the event in the audit ledger."""
         ep = self.authority.rotate_keys()
+        rotation_info = {
+            "epoch": ep.epoch,
+            "valid_from": ep.valid_from,
+            "grace_until": ep.grace_until,
+            "cutoff": ep.cutoff,
+        }
+        self._last_rotation = rotation_info
         self.ledger.log(
             actor="Authority",
             action="KEY_ROTATE",
@@ -281,12 +289,7 @@ class SentinelRuntime:
                 "cutoff": ep.cutoff,
             },
         )
-        return {
-            "epoch": ep.epoch,
-            "valid_from": ep.valid_from,
-            "grace_until": ep.grace_until,
-            "cutoff": ep.cutoff,
-        }
+        return rotation_info
 
     def revoke_node(self, node_id: str, reason: str = "operator-triggered") -> dict:
         """Revoke `node_id` across all nodes and return propagation telemetry."""
@@ -369,6 +372,7 @@ class SentinelRuntime:
         target = current if query_epoch is None else query_epoch
         check_ts = time.time() + offset_seconds
         prior = current - 1 if current > 0 else None
+        rot = self._last_rotation
         return {
             "query_epoch": target,
             "offset_seconds": offset_seconds,
@@ -381,6 +385,8 @@ class SentinelRuntime:
                 else None
             ),
             "grace_period_seconds": self.config.grace_period_seconds,
+            "valid_from": rot["valid_from"] if rot and rot["epoch"] == current else None,
+            "grace_until": rot["grace_until"] if rot and rot["epoch"] == current else None,
         }
 
     def probe_replay_rejection(self, source_node: str = "WebPortal", target_node: str = "Auth") -> dict:
@@ -604,12 +610,51 @@ class SentinelRuntime:
                 "is_revoked": n.is_revoked,
                 "revoked_at": n.revoked_at,
                 "signing_fp": hashlib.sha256(n.signing_public_bytes).hexdigest()[:16],
+                "signing_fp_full": hashlib.sha256(n.signing_public_bytes).hexdigest(),
                 "kem_fp": hashlib.sha256(n.kem_public_bytes).hexdigest()[:16],
+                "kem_fp_full": hashlib.sha256(n.kem_public_bytes).hexdigest(),
             }
             for n in self.authority.list_nodes(include_revoked=True)
         ]
         alerts = [self._serialize_alert(a) for a in self.detector.get_alerts()]
-        entries = [asdict(e) for e in self.ledger.get_entries(since_id=max(0, self.ledger._entry_count - 25), limit=25)]
+        all_entries = self.ledger.get_entries(since_id=0, limit=5000)
+        entries = [asdict(e) for e in all_entries[-50:]]
+        verify_res = self.ledger.verify_chain()
+
+        handshake_actions = {
+            "NODE_REGISTERED",
+            "NODE_RE_ENROLLED",
+            "HANDSHAKE_INIT",
+            "MESSAGE_SEND",
+            "RESUMPTION_SUCCESS",
+            "REPLAY_DETECTED",
+            "AAD_TAMPER_BLOCKED",
+            "RECEIVE_TAMPER_DETECTED",
+            "RECEIVE_AAD_BINDING_MISMATCH",
+            "RESUMPTION_HIJACK_BLOCKED",
+            "RESUMPTION_REPLAY_REJECTED",
+            "HANDSHAKE_SIG_FAIL",
+            "SERVICE_CALL",
+        }
+        crypto_reject_actions = {
+            "REPLAY_DETECTED",
+            "AAD_TAMPER_BLOCKED",
+            "RECEIVE_TAMPER_DETECTED",
+            "RECEIVE_AAD_BINDING_MISMATCH",
+            "RESUMPTION_HIJACK_BLOCKED",
+            "RESUMPTION_REPLAY_REJECTED",
+            "HANDSHAKE_SIG_FAIL",
+        }
+        handshakes_total = max(len(nodes), sum(1 for e in all_entries if e.action in handshake_actions))
+        crypto_blocked = sum(1 for e in all_entries if e.action in crypto_reject_actions)
+        aad_verified = max(0, handshakes_total - crypto_blocked)
+        policy_blocked = min(aad_verified, len(alerts))
+        policy_allowed = max(0, aad_verified - policy_blocked)
+        ledger_anchored = policy_allowed if verify_res["ok"] else 0
+        total_verified = verify_res["total_entries"]
+        faults = len(verify_res["tampered_entries"]) + len(verify_res["bad_checkpoints"])
+        chain_integrity_pct = 100.0 if verify_res["ok"] else round(100.0 * max(0, total_verified - faults) / max(1, total_verified), 1)
+
         return {
             "current_epoch": self.authority.current_epoch,
             "revocation_epoch": self.authority.revocation_epoch,
@@ -624,6 +669,16 @@ class SentinelRuntime:
             "metrics": self.detector.get_metrics_report(),
             "service_graph": self.detector.get_service_graph_summary(),
             "ledger_summary": self.ledger.export_summary(),
+            "chain_verified": verify_res["ok"],
+            "chain_integrity_pct": chain_integrity_pct,
+            "pipeline_stats": {
+                "handshakes": handshakes_total,
+                "aad_verified": aad_verified,
+                "policy_allowed": policy_allowed,
+                "ledger_anchored": ledger_anchored,
+                "crypto_blocked": crypto_blocked,
+                "policy_blocked": policy_blocked,
+            },
             "recent_entries": list(reversed(entries)),
         }
 
