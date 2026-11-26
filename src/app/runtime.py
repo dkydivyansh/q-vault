@@ -2,11 +2,14 @@
 
 import hashlib
 import secrets
+import tempfile
 import threading
 import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from cryptography.exceptions import InvalidTag
 
 from src.sdk import (
     AuditLedger,
@@ -16,7 +19,11 @@ from src.sdk import (
     PeerInfo,
     RevocationNotice,
     WatchdogDetector,
+    decrypt_chunk,
+    encrypt_chunk,
     generate_identity_keypair,
+    perform_handshake_initiator,
+    perform_handshake_responder,
     serialize_private_keys,
     serialize_public_keys,
 )
@@ -127,6 +134,39 @@ class SentinelRuntime:
             )
             self.detector.ingest_event(ev)
 
+    def _install_node_gateway(self, node_id: str, kp: Any, pub: dict) -> NodeGateway:
+        priv = serialize_private_keys(kp)
+        gw = NodeGateway(
+            node_id=node_id,
+            keypair_private_key_bytes=priv,
+            authority_client=self.authority,
+            ledger=self.ledger,
+        )
+        for rev in self.authority.list_revocations():
+            gw._revoked_peers.add(rev["node_id"])
+        peer_info = PeerInfo(
+            node_id=node_id,
+            signing_public_bytes=pub["signing_public"],
+            kem_public_bytes=pub["kem_public"],
+            x25519_public_bytes=pub["x25519_public"],
+        )
+
+        for existing_id, existing_gw in self.gateways.items():
+            existing_gw.register_peer(peer_info)
+            existing_pub = serialize_public_keys(self.keypairs[existing_id])
+            gw.register_peer(
+                PeerInfo(
+                    node_id=existing_id,
+                    signing_public_bytes=existing_pub["signing_public"],
+                    kem_public_bytes=existing_pub["kem_public"],
+                    x25519_public_bytes=existing_pub["x25519_public"],
+                )
+            )
+
+        self.keypairs[node_id] = kp
+        self.gateways[node_id] = gw
+        return gw
+
     def register_service_node(self, node_id: str) -> NodeGateway:
         """Provision hybrid PQC identity keys, register with Authority, and mesh peer keys."""
         with self._lock:
@@ -135,7 +175,6 @@ class SentinelRuntime:
 
             kp = generate_identity_keypair(node_id)
             pub = serialize_public_keys(kp)
-            priv = serialize_private_keys(kp)
 
             if self.authority.get_node(node_id) is None:
                 self.authority.register_node(
@@ -145,35 +184,7 @@ class SentinelRuntime:
                     x25519_public_bytes=pub["x25519_public"],
                 )
 
-            gw = NodeGateway(
-                node_id=node_id,
-                keypair_private_key_bytes=priv,
-                authority_client=self.authority,
-                ledger=self.ledger,
-            )
-            for rev in self.authority.list_revocations():
-                gw._revoked_peers.add(rev["node_id"])
-            peer_info = PeerInfo(
-                node_id=node_id,
-                signing_public_bytes=pub["signing_public"],
-                kem_public_bytes=pub["kem_public"],
-                x25519_public_bytes=pub["x25519_public"],
-            )
-
-            for existing_id, existing_gw in self.gateways.items():
-                existing_gw.register_peer(peer_info)
-                existing_pub = serialize_public_keys(self.keypairs[existing_id])
-                gw.register_peer(
-                    PeerInfo(
-                        node_id=existing_id,
-                        signing_public_bytes=existing_pub["signing_public"],
-                        kem_public_bytes=existing_pub["kem_public"],
-                        x25519_public_bytes=existing_pub["x25519_public"],
-                    )
-                )
-
-            self.keypairs[node_id] = kp
-            self.gateways[node_id] = gw
+            gw = self._install_node_gateway(node_id, kp, pub)
             self.ledger.log(
                 actor="Authority",
                 action="NODE_REGISTERED",
@@ -181,6 +192,35 @@ class SentinelRuntime:
                 details={"epoch": self.authority.current_epoch},
             )
             return gw
+
+    def re_enroll_service_node(self, previous_node_id: str, new_node_id: str) -> dict:
+        """Issue replacement PQC credentials for a revoked service while keeping old keys blocked."""
+        with self._lock:
+            if new_node_id in self.gateways or self.authority.get_node(new_node_id) is not None:
+                raise ValueError(f"Replacement node '{new_node_id}' is already registered.")
+
+            kp = generate_identity_keypair(new_node_id)
+            pub = serialize_public_keys(kp)
+            rec = self.authority.re_enroll_node(
+                new_node_id=new_node_id,
+                signing_public_bytes=pub["signing_public"],
+                kem_public_bytes=pub["kem_public"],
+                x25519_public_bytes=pub["x25519_public"],
+                previous_node_id=previous_node_id,
+            )
+            self._install_node_gateway(new_node_id, kp, pub)
+            self.ledger.log(
+                actor="Authority",
+                action="NODE_RE_ENROLLED",
+                target=new_node_id,
+                details={"previous_node_id": previous_node_id, "epoch": rec.key_epoch},
+            )
+            return {
+                "node_id": rec.node_id,
+                "previous_node_id": previous_node_id,
+                "key_epoch": rec.key_epoch,
+                "registered_at": rec.registered_at,
+            }
 
     def provision_default_topology(self) -> List[str]:
         """Provision the standard enterprise service nodes defined in policy."""
@@ -307,6 +347,237 @@ class SentinelRuntime:
         )
         return info
 
+    def list_backups(self) -> List[dict]:
+        """List encrypted authority backups present in the configured backup directory."""
+        root = Path(self.config.backup_dir)
+        if not root.exists():
+            return []
+        files = sorted(root.glob("*.qvbak"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return [
+            {
+                "name": p.name,
+                "path": str(p),
+                "size": p.stat().st_size,
+                "modified_at": p.stat().st_mtime,
+            }
+            for p in files[:15]
+        ]
+
+    def get_epoch_status(self, query_epoch: Optional[int] = None, offset_seconds: float = 0.0) -> dict:
+        """Evaluate current epoch, prior-epoch grace validity, or custom epoch timing."""
+        current = self.authority.current_epoch
+        target = current if query_epoch is None else query_epoch
+        check_ts = time.time() + offset_seconds
+        prior = current - 1 if current > 0 else None
+        return {
+            "query_epoch": target,
+            "offset_seconds": offset_seconds,
+            "is_valid": self.authority.is_epoch_valid(target, check_time=check_ts),
+            "current_epoch": current,
+            "prior_epoch": prior,
+            "prior_epoch_valid": (
+                self.authority.is_epoch_valid(prior, check_time=check_ts)
+                if prior is not None
+                else None
+            ),
+            "grace_period_seconds": self.config.grace_period_seconds,
+        }
+
+    def probe_replay_rejection(self, source_node: str = "WebPortal", target_node: str = "Auth") -> dict:
+        """Execute a live session transfer and replay its packet to verify bitmask rejection."""
+        if source_node not in self.gateways or target_node not in self.gateways:
+            raise ValueError("Both source and target service nodes must be registered.")
+        src_gw = self.gateways[source_node]
+        dst_gw = self.gateways[target_node]
+        epoch = self.authority.current_epoch
+
+        kem_ct, eph_pub, sig, sid_src = src_gw.initiate_handshake(target_node, epoch)
+        sid_dst = dst_gw.complete_handshake(source_node, kem_ct, eph_pub, sig, epoch)
+        payload = b"Q-Vault replay-detection payload"
+        tx = src_gw.send_message(sid_src, payload, target_node)
+        if not tx.success:
+            raise RuntimeError(tx.error or "Transfer setup failed")
+        chunk = tx.encrypted_chunks[0]  # type: ignore[attr-defined]
+
+        first = dst_gw.receive_chunk(
+            sid_dst, chunk["nonce"], chunk["ciphertext"], chunk["aad"], chunk["seq_num"]
+        )
+        replay = dst_gw.receive_chunk(
+            sid_dst, chunk["nonce"], chunk["ciphertext"], chunk["aad"], chunk["seq_num"]
+        )
+        flushed = [self._serialize_alert(a) for a in self.detector.flush()]
+        return {
+            "session_id": sid_src.hex()[:16],
+            "seq_num": chunk["seq_num"],
+            "first_delivery_bytes": len(first) if first is not None else 0,
+            "replay_blocked": replay is None,
+            "alerts_emitted": flushed,
+        }
+
+    def probe_aad_tampering(
+        self,
+        source_node: str = "WebPortal",
+        target_node: str = "Auth",
+        spoofed_recipient: str = "PayrollDB",
+    ) -> dict:
+        """Encrypt a chunk bound to `target_node` and verify `InvalidTag` when recipient is altered."""
+        if source_node not in self.keypairs or target_node not in self.keypairs:
+            raise ValueError("Both source and target service nodes must be registered.")
+        kp_src = self.keypairs[source_node]
+        kp_dst = self.keypairs[target_node]
+        x_dst_pub = serialize_public_keys(kp_dst)["x25519_public"]
+        epoch = self.authority.current_epoch
+
+        hs_a, kem_ct, eph_pub, sig = perform_handshake_initiator(
+            kp_src, kp_dst.kem_public, kp_dst.signing_public, x_dst_pub, target_node, epoch
+        )
+        hs_b = perform_handshake_responder(
+            kp_dst, kem_ct, eph_pub, kp_src.signing_public, source_node, sig, epoch
+        )
+        chunk = encrypt_chunk(
+            hs_a.session_keys,
+            b"AAD recipient binding payload",
+            f"aad-{secrets.token_hex(4)}",
+            0,
+            1,
+            1,
+            source_node,
+            target_node,
+        )
+        rejected = False
+        error_type = ""
+        try:
+            decrypt_chunk(hs_b.session_keys, chunk, source_node, spoofed_recipient)
+        except InvalidTag:
+            rejected = True
+            error_type = "InvalidTag"
+
+        self.ledger.log(
+            actor=source_node,
+            action="AAD_TAMPER_BLOCKED",
+            target=spoofed_recipient,
+            details={"intended_recipient": target_node, "exception": error_type},
+        )
+        return {
+            "source_node": source_node,
+            "intended_recipient": target_node,
+            "spoofed_recipient": spoofed_recipient,
+            "rejected": rejected,
+            "exception": error_type,
+        }
+
+    def probe_resumption_hijack(
+        self,
+        authorized_peer: str = "WebPortal",
+        host_node: str = "Auth",
+        impersonator_peer: str = "PayrollDB",
+    ) -> dict:
+        """Issue a resumption ticket and verify hijack blocking, valid rotation, and replay block."""
+        if authorized_peer not in self.gateways or host_node not in self.gateways:
+            raise ValueError("Authorized peer and host service node must be registered.")
+        peer_gw = self.gateways[authorized_peer]
+        host_gw = self.gateways[host_node]
+        epoch = self.authority.current_epoch
+
+        kem_ct, eph_pub, sig, _ = peer_gw.initiate_handshake(host_node, epoch)
+        sid_host = host_gw.complete_handshake(authorized_peer, kem_ct, eph_pub, sig, epoch)
+        ticket = host_gw.create_resumption_ticket(sid_host)
+
+        hijack_sid = host_gw.resume_session(ticket, impersonator_peer)
+        valid_sid = host_gw.resume_session(ticket, authorized_peer)
+        replay_sid = host_gw.resume_session(ticket, authorized_peer)
+
+        self.ledger.log(
+            actor=impersonator_peer,
+            action="RESUMPTION_HIJACK_BLOCKED",
+            target=host_node,
+            details={"authorized_peer": authorized_peer, "rotated_session": valid_sid is not None},
+        )
+        return {
+            "authorized_peer": authorized_peer,
+            "host_node": host_node,
+            "impersonator_peer": impersonator_peer,
+            "hijack_blocked": hijack_sid is None,
+            "valid_resumed": valid_sid is not None and valid_sid != sid_host,
+            "rotated_session_id": valid_sid.hex()[:16] if valid_sid else None,
+            "ticket_replay_blocked": replay_sid is None,
+        }
+
+    def probe_backup_tamper(self) -> dict:
+        """Export an encrypted backup, verify clean restore, and verify 1-byte tamper rejection."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ok_path = str(Path(tmpdir) / "intact.qvbak")
+            bad_path = str(Path(tmpdir) / "tampered.qvbak")
+            info = self.authority.backup_keys(ok_path)
+            intact_restored = self.authority.restore_from_backup(ok_path)
+
+            raw = bytearray(Path(ok_path).read_bytes())
+            flip_offset = min(60, len(raw) - 1)
+            raw[flip_offset] ^= 0x01
+            Path(bad_path).write_bytes(bytes(raw))
+
+            corrupted_rejected = False
+            error_detail = ""
+            try:
+                self.authority.restore_from_backup(bad_path)
+            except ValueError as exc:
+                corrupted_rejected = True
+                error_detail = str(exc)
+
+            self.ledger.log(
+                actor="Authority",
+                action="BACKUP_TAMPER_VERIFIED",
+                target="AuthorityDB",
+                details={"byte_flipped": flip_offset, "rejected": corrupted_rejected},
+            )
+            return {
+                "original_bytes": info["size"],
+                "flipped_byte_offset": flip_offset,
+                "intact_restored": intact_restored,
+                "corrupted_rejected": corrupted_rejected,
+                "error_detail": error_detail,
+            }
+
+    def probe_clock_skew(self) -> dict:
+        """Feed out-of-order telemetry within the skew tolerance window and verify flush flagging."""
+        now = time.time() - 1.5
+        ev_later = LogEvent(
+            event_id=f"skew-later-{secrets.token_hex(3)}",
+            timestamp=now + 1.2,
+            received_at=time.time(),
+            actor="SkewedWorker",
+            action="SERVICE_CALL",
+            source_service="UserDB",
+            target_service="PayrollDB",
+            key_epoch=self.authority.current_epoch,
+        )
+        ev_earlier = LogEvent(
+            event_id=f"skew-earlier-{secrets.token_hex(3)}",
+            timestamp=now + 0.1,
+            received_at=time.time(),
+            actor="SkewedWorker",
+            action="READ",
+            source_service="WebPortal",
+            target_service="Auth",
+            key_epoch=self.authority.current_epoch,
+        )
+        before_flush = len(self.detector.ingest_event(ev_later)) + len(
+            self.detector.ingest_event(ev_earlier)
+        )
+        flushed = [self._serialize_alert(a) for a in self.detector.flush()]
+        self.ledger.log(
+            actor="Watchdog",
+            action="CLOCK_SKEW_VERIFIED",
+            target="SkewedWorker",
+            details={"buffered_immediately": before_flush, "flushed_alerts": len(flushed)},
+        )
+        return {
+            "clock_tolerance_seconds": self.config.clock_tolerance_seconds,
+            "buffered_before_flush": before_flush,
+            "flushed_alerts": flushed,
+            "ordering_uncertain_flagged": any(a["ordering_uncertain"] for a in flushed),
+        }
+
     def _serialize_alert(self, alert) -> dict:
         return {
             "alert_id": alert.alert_id,
@@ -344,8 +615,11 @@ class SentinelRuntime:
             "revocation_epoch": self.authority.revocation_epoch,
             "grace_period_seconds": self.config.grace_period_seconds,
             "clock_tolerance_seconds": self.config.clock_tolerance_seconds,
+            "checkpoint_interval": self.config.checkpoint_interval,
+            "epoch_status": self.get_epoch_status(),
             "nodes": nodes,
             "revocations": self.authority.list_revocations(),
+            "recent_backups": self.list_backups(),
             "alerts": list(reversed(alerts[-50:])),
             "metrics": self.detector.get_metrics_report(),
             "service_graph": self.detector.get_service_graph_summary(),

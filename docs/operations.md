@@ -161,7 +161,11 @@ from src.app.config import SentinelConfig, load_policy, load_config
 | `revoke_node` | `(node_id: str, reason: str = "operator-triggered") -> dict` | Revokes `node_id` and returns `{"node_id", "revocation_epoch", "revoked_at", "reason", "propagation"}`. |
 | `ingest_service_event` | `(actor: str, action: str, source_service: str, target_service: str, timestamp: float \| None = None, flush_immediately: bool = False, details: dict \| None = None) -> List[dict]` | Appends canonical event to `AuditLedger`, ingests `LogEvent` into `WatchdogDetector`, optionally calls `flush()`, and returns serialized alert dicts. |
 | `backup_authority` | `(filename: str \| None = None) -> dict` | Writes signed/encrypted `.qvbak` under `config.backup_dir`, logs `KEY_BACKUP`, returns `{"path", "checksum", "size"}`. |
-| `get_snapshot` | `() -> dict` | Returns control-plane telemetry (`current_epoch`, `revocation_epoch`, `nodes`, `revocations`, `alerts`, `metrics`, `service_graph`, `ledger_summary`, `recent_entries`). |
+| `list_backups` | `() -> List[dict]` | Lists up to 15 `.qvbak` archives in `config.backup_dir` ordered newest first (`name`, `path`, `size`, `modified_at`). |
+| `re_enroll_service_node` | `(previous_node_id: str, new_node_id: str) -> dict` | Provisions fresh PQC keys for `new_node_id` while enforcing permanent revocation on `previous_node_id`. |
+| `get_epoch_status` | `(query_epoch: int \| None = None, offset_seconds: float = 0.0) -> dict` | Evaluates `is_epoch_valid()` for a target epoch at `now + offset_seconds` alongside grace-window telemetry. |
+| `probe_replay_rejection` / `probe_aad_tampering` / `probe_resumption_hijack` / `probe_backup_tamper` / `probe_clock_skew` | `(defaults)` -> `dict` | Executes live cryptographic and detector verification probes directly against SDK primitives and logs audited outcomes. |
+| `get_snapshot` | `() -> dict` | Returns control-plane telemetry (`current_epoch`, `revocation_epoch`, `checkpoint_interval`, `epoch_status`, `nodes`, `revocations`, `recent_backups`, `alerts`, `metrics`, `service_graph`, `ledger_summary`, `recent_entries`). |
 | `close` | `() -> None` | Closes underlying `KeyAuthority` SQLite WAL connection. |
 
 ---
@@ -265,21 +269,29 @@ Defined in `src/app/authority_server.py` and mounted by `create_web_console_app(
 | `POST /api/v1/authority/rotate` | — | `200`: `{"epoch", "valid_from", "grace_until", "cutoff"}` |
 | `POST /api/v1/authority/revoke` | `{"node_id": str, "reason": str = "operator-triggered"}` | `200`: `{"node_id", "revocation_epoch", "revoked_at", "reason", "propagation"}` · `404`: Node ID not found (`ValueError`). |
 | `POST /api/v1/authority/backup` | — | `200`: `{"path": str, "checksum": str, "size": int}` |
+| `GET /api/v1/authority/backups` | — | `200`: `{"backups": [{"name", "path", "size", "modified_at"}]}` |
 | `POST /api/v1/authority/restore` | `{"backup_path": str}` | `200`: `{"restored": bool}` · `400`: Signature invalid, corrupted ciphertext, wrong KEK, or file I/O failure. |
+| `POST /api/v1/authority/re-enroll` | `{"previous_node_id": str, "new_node_id": str}` | `200`: `{"node_id", "previous_node_id", "key_epoch", "registered_at"}` · `400`: Duplicate target ID or previous node not revoked. |
+| `GET /api/v1/authority/epoch-check` | Query: `epoch: int \| null = null`, `offset_seconds: float = 0.0` | `200`: `{"query_epoch", "offset_seconds", "is_valid", "current_epoch", "prior_epoch", "prior_epoch_valid", "grace_period_seconds"}` |
 | `POST /api/v1/gateway/transfer` | `{"source_node": str, "target_node": str, "payload_text": str}` | `200`: `{"msg_id", "session_id", "epoch", "chunks_sent", "delivery_ms", "verified_match", "bytes_delivered"}` · `403`: Unknown node, revoked node, or encryption/verification rejection. |
 
-### Audit Ledger, Watchdog Detector & Verification Scenario Endpoints
+### Audit Ledger, Watchdog Detector & Verification Probe Endpoints
 
 | Method & Path | Query / Request Schema | Success (`200`) Response |
 | :--- | :--- | :--- |
 | `GET /api/v1/ledger/verify` | — | `{"ok": bool, "total_entries": int, "tampered_entries": List[int], "bad_checkpoints": List[int], "message": str}` |
-| `GET /api/v1/ledger/entries` | Query: `since_id: int = 0`, `limit: int = 50` | `{"entries": [{"entry_id", "timestamp", "actor", "action", "target", "prev_hash", "entry_hash", "is_checkpoint"}]}` |
+| `GET /api/v1/ledger/entries` | Query: `since_id: int = 0`, `limit: int = 50` | `{"entries": [{"entry_id", "timestamp", "actor", "action", "target", "prev_hash", "entry_hash", "is_checkpoint", "checkpoint_signature"}]}` |
 | `POST /api/v1/detector/events` | `{"actor": str, "action": str, "source_service": str, "target_service": str, "timestamp": float \| null = null, "flush_immediately": bool = true}` | `{"alerts": List[dict], "metrics": dict}` |
 | `POST /api/v1/detector/flush` | — | Flushes buffered clock-skew events: `{"alerts": List[dict], "metrics": dict}` |
 | `GET /api/v1/detector/alerts` | — | `{"alerts": List[dict]}` |
 | `GET /api/v1/detector/metrics` | — | `WatchdogDetector.get_metrics_report()` JSON object. |
 | `GET /api/v1/detector/graph` | — | `WatchdogDetector.get_service_graph_summary()` JSON (`{"allowed_paths": List[List[str]], "actor_access_history": Dict[str, List[dict]]}`). |
 | `POST /api/v1/scenarios/lateral-movement` | — | Injects `WebPortal -> FileGateway -> VaultDB -> PayrollDB -> Admin` sequence under `FileGateway`; returns `{"actor": "FileGateway", "is_revoked": bool, "alerts": List[dict]}`. |
+| `POST /api/v1/probes/replay` | `{"source_node": str = "WebPortal", "target_node": str = "Auth"}` | Verifies sliding-window duplicate sequence rejection and `REPLAY_001` alert emission (`403` if peer revoked). |
+| `POST /api/v1/probes/aad-tamper` | `{"source_node": str = "WebPortal", "target_node": str = "Auth", "spoofed_recipient": str = "PayrollDB"}` | Verifies `AES-256-GCM` raises `InvalidTag` on recipient substitution. |
+| `POST /api/v1/probes/resumption-hijack` | `{"authorized_peer": str = "WebPortal", "host_node": str = "Auth", "impersonator_peer": str = "PayrollDB"}` | Verifies peer-bound hijack rejection, valid session rotation, and single-use ticket replay block (`403` if peer revoked). |
+| `POST /api/v1/probes/backup-tamper` | — | Exports temporary `.qvbak`, confirms clean restore, flips 1 byte, and verifies `ValueError` rejection. |
+| `POST /api/v1/probes/clock-skew` | — | Feeds skewed events inside tolerance window, confirms buffering before flush, and verifies `ordering_uncertain=true`. |
 
 ---
 
@@ -300,10 +312,10 @@ Each service gateway (`WebPortal`, `Auth`, `FileGateway`, `Billing`, `UserDB`, `
 
 ## 7. Web Console (`GET /`)
 
-Serving `src/app/static/index.html` at `http://<host>:<port>/`, the browser console polls control-plane endpoints to display and trigger live operations:
+Serving `src/app/static/index.html` at `http://<host>:<port>/`, the console renders a true-black (`#000000`) dark-theme workspace organized across four accessible tabs:
 
-* **Header Control Bar:** One-click actions for **Refresh**, **Rotate Epoch** (`POST /api/v1/authority/rotate`), **Verify Audit Chain** (`GET /api/v1/ledger/verify`), **Create Signed Backup** (`POST /api/v1/authority/backup`), and **Trigger Lateral-Movement Test** (`POST /api/v1/scenarios/lateral-movement`).
-* **Operational Telemetry Cards:** Live counts for `Current Key Epoch`, `Active Service Nodes`, `Revoked Nodes`, `Total Alerts`, `Auto-Revocations`, and `Audit Ledger Entries`, plus live audit chain head banner.
-* **Quantum-Safe Service Transfer & Graph Panel:** Interactive `Source Service -> Target Service` encrypted transfer form (`POST /api/v1/gateway/transfer`) alongside rendered `Authorized Service Graph Paths`.
-* **Service Node Registry:** Displays each service node ID, `ACTIVE`/`REVOKED` badge, truncated `ML-DSA` public key fingerprint, active epoch, and an interactive **Confirm Emergency Key Revocation** modal dialog (`POST /api/v1/authority/revoke` with operator-supplied reason).
-* **Watchdog Alerts & Tamper-Evident Audit Ledger Tables:** Real-time views of deterministic containment alerts (`Severity`, `Rule`, `Actor`, `Description`) and SHA-256 chained log records (`ID`, `Actor`, `Action`, `Target`, `Entry Hash`, `Checkpoint`).
+* **Global Command Bar & Operational Telemetry Strip:** Sticky header with authority health indicator, `Refresh`, `Rotate epoch`, and `Verify chain` actions paired with live counters (`Active key epoch`, `Service identities`, `Watchdog alerts`, `Audit records` with next `ML-DSA-65` checkpoint cadence).
+* **Overview:** Interactive SVG **Service Access Topology** rendering policy edges, unauthorized lateral-movement hops, and clickable service nodes paired with a **Selected service node** inspector (`Revoke credentials` / `Re-enroll replacement`), **Send encrypted message** form (`POST /api/v1/gateway/transfer`), and **Watchdog security alerts** table.
+* **Identities & Lifecycle:** Epoch grace-window inspector (`GET /api/v1/authority/epoch-check`), `.qvbak` signed backup creation, restoration, and 1-byte tamper verification (`POST /api/v1/probes/backup-tamper`), plus responsive service registry with credential revocation and replacement re-enrollment modals (`<dialog>`).
+* **Security Lab:** Live cryptographic protocol probes (anti-replay bitmask rejection, recipient AAD substitution `InvalidTag`, peer-bound session resumption hijack & single-use replay) alongside deterministic watchdog tests (multi-hop lateral movement, `PRIV_ESC_001` vs. `Admin` context rules, and `±5s` clock-skew flush verification).
+* **Audit Ledger:** Filterable canonical `SHA-256` ledger view explaining periodic `ML-DSA-65` checkpointing (`checkpoint_signature: null` on intermediate chained records) with clickable row modals inspecting full record JSON payloads.

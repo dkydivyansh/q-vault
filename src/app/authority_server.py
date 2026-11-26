@@ -42,6 +42,28 @@ class RestoreRequest(BaseModel):
     backup_path: str
 
 
+class ReEnrollRequest(BaseModel):
+    previous_node_id: str
+    new_node_id: str
+
+
+class ProbePairRequest(BaseModel):
+    source_node: str = "WebPortal"
+    target_node: str = "Auth"
+
+
+class AadProbeRequest(BaseModel):
+    source_node: str = "WebPortal"
+    target_node: str = "Auth"
+    spoofed_recipient: str = "PayrollDB"
+
+
+class ResumptionProbeRequest(BaseModel):
+    authorized_peer: str = "WebPortal"
+    host_node: str = "Auth"
+    impersonator_peer: str = "PayrollDB"
+
+
 def create_authority_router(runtime: SentinelRuntime) -> APIRouter:
     """Create FastAPI router exposing control plane, telemetry, and detector endpoints."""
     router = APIRouter(prefix="/api/v1")
@@ -90,6 +112,10 @@ def create_authority_router(runtime: SentinelRuntime) -> APIRouter:
     def backup() -> dict:
         return runtime.backup_authority()
 
+    @router.get("/authority/backups")
+    def list_backups() -> dict:
+        return {"backups": runtime.list_backups()}
+
     @router.post("/authority/restore")
     def restore(req: RestoreRequest) -> dict:
         try:
@@ -97,6 +123,50 @@ def create_authority_router(runtime: SentinelRuntime) -> APIRouter:
             return {"restored": ok}
         except (ValueError, OSError) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/authority/re-enroll")
+    def re_enroll(req: ReEnrollRequest) -> dict:
+        try:
+            return runtime.re_enroll_service_node(req.previous_node_id, req.new_node_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/authority/epoch-check")
+    def check_epoch(epoch: Optional[int] = None, offset_seconds: float = 0.0) -> dict:
+        return runtime.get_epoch_status(query_epoch=epoch, offset_seconds=offset_seconds)
+
+    @router.post("/probes/replay")
+    def probe_replay(req: ProbePairRequest) -> dict:
+        try:
+            return runtime.probe_replay_rejection(req.source_node, req.target_node)
+        except (ValueError, PermissionError, RuntimeError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.post("/probes/aad-tamper")
+    def probe_aad_tamper(req: AadProbeRequest) -> dict:
+        try:
+            return runtime.probe_aad_tampering(
+                req.source_node, req.target_node, req.spoofed_recipient
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/probes/resumption-hijack")
+    def probe_resumption_hijack(req: ResumptionProbeRequest) -> dict:
+        try:
+            return runtime.probe_resumption_hijack(
+                req.authorized_peer, req.host_node, req.impersonator_peer
+            )
+        except (ValueError, PermissionError) as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    @router.post("/probes/backup-tamper")
+    def probe_backup_tamper() -> dict:
+        return runtime.probe_backup_tamper()
+
+    @router.post("/probes/clock-skew")
+    def probe_clock_skew() -> dict:
+        return runtime.probe_clock_skew()
 
     @router.post("/gateway/transfer")
     def transfer(req: TransferRequest) -> dict:
@@ -125,6 +195,7 @@ def create_authority_router(runtime: SentinelRuntime) -> APIRouter:
                     "prev_hash": e.prev_hash,
                     "entry_hash": e.entry_hash,
                     "is_checkpoint": e.is_checkpoint,
+                    "checkpoint_signature": e.checkpoint_signature,
                 }
                 for e in entries
             ]

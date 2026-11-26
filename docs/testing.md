@@ -1,6 +1,6 @@
 # Verification Suite & Benchmark Results
 
-This document describes the automated verification suite under `tests/`, the isolation fixtures used during test execution, the catalog of all 25 test cases, the deterministic benchmark runner (`src/app/benchmark.py`), and observed performance measurements.
+This document describes the automated verification suite under `tests/`, the isolation fixtures used during test execution, the catalog of all 26 test cases, the deterministic benchmark runner (`src/app/benchmark.py`), and observed performance measurements.
 
 ---
 
@@ -30,7 +30,7 @@ All filesystem, SQLite, and HTTP state in `tests/` is created inside isolated te
 
 ---
 
-## 2. Automated Test Case Catalog (25 Tests)
+## 2. Automated Test Case Catalog (26 Tests)
 
 ### 2.1 Cryptographic Protocol Suite (`tests/test_crypto_protocol.py` — 9 Tests)
 
@@ -80,7 +80,7 @@ Test topology (`ALLOWED_PATHS`): 8 authorized directed service edges (`WebPortal
 
 ---
 
-### 2.4 HTTP Application & Web Console Suite (`tests/test_app_integration.py` — 4 Tests)
+### 2.4 HTTP Application & Web Console Suite (`tests/test_app_integration.py` — 5 Tests)
 
 Helper factory: `_make_test_client(tmp_path)` creates isolated `SentinelRuntime` and FastAPI `TestClient`.
 
@@ -90,6 +90,7 @@ Helper factory: `_make_test_client(tmp_path)` creates isolated `SentinelRuntime`
 | `test_http_service_node_handshake_transfer_and_replay_rejection` | `tmp_path`. HTTP `POST /nodes/Auth/pqc/handshake`, encrypted payload delivery to `POST /nodes/Auth/pqc/receive`, then identical duplicate delivery. | Handshake returns matching `session_id_hex`; initial chunk returns `status == "delivered"` with exact recovered hex plaintext; duplicate replay returns `status == "pending_or_rejected"`. |
 | `test_http_lateral_movement_triggers_auto_revocation_and_ledger_verifies` | `tmp_path`. `POST /api/v1/scenarios/lateral-movement`, post-revocation `FileGateway -> VaultDB` transfer, unaffected `WebPortal -> Auth` transfer, and `GET /api/v1/ledger/verify`. | Lateral movement revokes `"FileGateway"`; `FileGateway -> VaultDB` returns HTTP `403`; `WebPortal -> Auth` returns `200` (`verified_match: true`); ledger verification returns `ok: true`. |
 | `test_http_service_node_resumption_hijack_blocked` | `tmp_path`. Ticket issued via `POST /nodes/Auth/pqc/ticket`; claimed as `"PayrollDB"`, then `"WebPortal"`, then replayed as `"WebPortal"`. | Cross-peer hijack returns HTTP `403`; valid claim returns HTTP `200` with rotated `session_id_hex`; single-use ticket replay returns HTTP `403`. |
+| `test_security_probes_re_enroll_and_epoch_check` | `tmp_path`. Exercises `/api/v1/probes/{aad-tamper,replay,resumption-hijack,backup-tamper,clock-skew}`, `/api/v1/authority/{rotate,epoch-check,backup,backups,revoke,re-enroll}`. | Confirms `InvalidTag` AAD rejection, replay block, resumption hijack/replay rejection, `.qvbak` corruption rejection, `ordering_uncertain` clock-skew flush, grace/post-cutoff validity, backup listing, and re-enrollment of `FileGateway_v2`. |
 
 ---
 
@@ -139,7 +140,7 @@ All metrics below were recorded verbatim from local execution of the verificatio
 
 ### Suite Status
 
-* **Automated Pytest Suite:** `25/25` tests passing across `tests/test_crypto_protocol.py` (9), `tests/test_lifecycle_resilience.py` (5), `tests/test_detector_ledger.py` (7), and `tests/test_app_integration.py` (4).
+* **Automated Pytest Suite:** `26/26` tests passing across `tests/test_crypto_protocol.py` (9), `tests/test_lifecycle_resilience.py` (5), `tests/test_detector_ledger.py` (7), and `tests/test_app_integration.py` (5).
 
 ### Cryptographic, Lifecycle & Ledger Benchmarks
 

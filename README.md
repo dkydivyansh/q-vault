@@ -14,8 +14,9 @@
 4. [Proposed Solution & Capabilities](#4-proposed-solution--capabilities)
 5. [Cryptographic Foundation: Grounding in NIST FIPS 204](#5-cryptographic-foundation-grounding-in-nist-fips-204)
 6. [Architecture Overview](#6-architecture-overview)
-7. [Enterprise Use Cases](#7-enterprise-use-cases)
-8. [References & Standards](#8-references--standards)
+7. [Quick SDK Usage (`src.sdk`)](#7-quick-sdk-usage-srcsdk)
+8. [Enterprise Use Cases](#8-enterprise-use-cases)
+9. [References & Standards](#9-references--standards)
 
 ---
 
@@ -115,7 +116,57 @@ For detailed system documentation, see:
 
 ---
 
-## 7. Enterprise Use Cases
+## 7. Quick SDK Usage (`src.sdk`)
+
+Install dependencies (`pip install -r requirements.txt`) and import the core security primitives directly from `src.sdk`:
+
+```python
+import secrets
+import tempfile
+from src.sdk import (
+    AuditLedger,
+    KeyAuthority,
+    NodeGateway,
+    PeerInfo,
+    generate_identity_keypair,
+    serialize_private_keys,
+    serialize_public_keys,
+)
+
+with tempfile.TemporaryDirectory() as tmp:
+    # 1. Initialize SQLite WAL Authority with an ephemeral 256-bit master KEK
+    authority = KeyAuthority(f"{tmp}/authority.db", secrets.token_hex(32))
+
+    # 2. Generate segregated ML-DSA-65 + ML-KEM-768 + X25519 keys for two services
+    kp_a, kp_b = generate_identity_keypair("ServiceA"), generate_identity_keypair("ServiceB")
+    pub_a, pub_b = serialize_public_keys(kp_a), serialize_public_keys(kp_b)
+    authority.register_node("ServiceA", pub_a["signing_public"], pub_a["kem_public"], pub_a["x25519_public"])
+    authority.register_node("ServiceB", pub_b["signing_public"], pub_b["kem_public"], pub_b["x25519_public"])
+
+    # 3. Configure tamper-evident audit logging using a separate ledger signing key
+    ledger_key = authority.get_or_create_ledger_signing_key()
+    ledger = AuditLedger(f"{tmp}/audit.jsonl", ledger_key, ledger_key.public_key())
+
+    # 4. Run hybrid handshake and recipient-bound AES-256-GCM transfer
+    gw_a = NodeGateway("ServiceA", serialize_private_keys(kp_a), authority_client=authority, ledger=ledger)
+    gw_b = NodeGateway("ServiceB", serialize_private_keys(kp_b), authority_client=authority, ledger=ledger)
+    gw_a.register_peer(PeerInfo("ServiceB", pub_b["signing_public"], pub_b["kem_public"], pub_b["x25519_public"]))
+    gw_b.register_peer(PeerInfo("ServiceA", pub_a["signing_public"], pub_a["kem_public"], pub_a["x25519_public"]))
+
+    kem_ct, eph_pub, sig, sid_a = gw_a.initiate_handshake("ServiceB", authority.current_epoch)
+    sid_b = gw_b.complete_handshake("ServiceA", kem_ct, eph_pub, sig, authority.current_epoch)
+
+    chunk = gw_a.send_message(sid_a, b"Quantum-safe payload", "ServiceB").encrypted_chunks[0]
+    assert gw_b.receive_chunk(sid_b, chunk["nonce"], chunk["ciphertext"], chunk["aad"], chunk["seq_num"]) == b"Quantum-safe payload"
+    assert ledger.verify_chain()["ok"] is True
+    authority.close()
+```
+
+See the full SDK guides under [docs/sdk/overview.md](docs/sdk/overview.md) ([Cryptographic Engine](docs/sdk/cryptography.md), [Key Authority & Node Gateway](docs/sdk/authority-and-gateway.md), [Audit Ledger & Watchdog Detector](docs/sdk/ledger-and-detector.md)) for per-function API documentation, key sizes, rotation, revocation, backups, and watchdog rules, or [docs/operations.md](docs/operations.md) for the CLI and Web Console.
+
+---
+
+## 8. Enterprise Use Cases
 
 * **Inter-Bank Settlement & Financial Messaging:** Protects high-value payment instructions against "Harvest Now, Decrypt Later" interception while delivering mathematically non-repudiable `ML-DSA` audit logs for regulatory compliance.
 * **Multi-Hospital Electronic Health Record (EHR) Exchanges:** Secures patient histories that require multi-decade confidentiality (well beyond the 2035 quantum transition horizon) while detecting compromised clinical credentials accessing unauthorized services.
@@ -124,7 +175,7 @@ For detailed system documentation, see:
 
 ---
 
-## 8. References & Standards
+## 9. References & Standards
 
 1. **National Institute of Standards and Technology (2024).** *Module-Lattice-Based Digital Signature Standard (ML-DSA).* Federal Information Processing Standards Publication **NIST FIPS 204**. `https://doi.org/10.6028/NIST.FIPS.204`
 2. **National Institute of Standards and Technology (2024).** *Module-Lattice-Based Key-Encapsulation Mechanism Standard (ML-KEM).* Federal Information Processing Standards Publication **NIST FIPS 203**. `https://doi.org/10.6028/NIST.FIPS.203`

@@ -3,36 +3,79 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Q-Vault Sentinel | Post-Quantum Control Plane</title>
+  <meta name="color-scheme" content="dark">
+  <title>Q-Vault Sentinel | Control Plane</title>
   <style>
-    :root {
-      --bg: #0b111b;
-      --surface: #111927;
-      --surface-elevated: #172235;
-      --border: #28364d;
-      --text: #e6edf7;
-      --text-muted: #9db0ca;
-      --accent: #38bdf8;
-      --accent-strong: #0284c7;
-      --success: #34d399;
-      --warning: #fbbf24;
-      --danger: #f87171;
-      --focus-ring: #fde047;
+    @property --fade-start {
+      syntax: "<length>";
+      inherits: false;
+      initial-value: 0px;
     }
 
-    *, *::before, *::after {
+    @property --fade-end {
+      syntax: "<length>";
+      inherits: false;
+      initial-value: 0px;
+    }
+
+    :root {
+      color-scheme: dark;
+      --bg-canvas: #000000;
+      --bg-surface: #0a0c10;
+      --bg-elevated: #11151d;
+      --bg-hover: #171c27;
+      --border-hairline: #1f2532;
+      --border-control: #3b4559;
+      --text-primary: #f2f5fa;
+      --text-secondary: #98a4b8;
+      --accent: #5fa8ff;
+      --accent-ink: #041326;
+      --ok: #3dd68c;
+      --ok-bg: #082417;
+      --warn: #f0b429;
+      --warn-bg: #261b05;
+      --danger: #f26368;
+      --danger-bg: #2b0b0e;
+      --focus-ring: #fde047;
+      --font-sans: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+      --font-mono: "JetBrains Mono", "Cascadia Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+      --scrollbar-thumb: #4b556b;
+      --scrollbar-track: #0a0c10;
+      accent-color: var(--accent);
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
+
+    *,
+    *::before,
+    *::after {
       box-sizing: border-box;
     }
 
+    html,
     body {
       margin: 0;
+      padding: 0;
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
       min-block-size: 100dvb;
       display: grid;
       grid-template-rows: auto 1fr auto;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      line-height: 1.5;
+    }
+
+    ::selection {
+      background-color: var(--accent);
+      color: var(--accent-ink);
+    }
+
+    :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
     }
 
     .skip-link {
@@ -40,522 +83,1738 @@
       inset-inline-start: -9999px;
       inset-block-start: 0.75rem;
       z-index: 100;
-      padding: 0.5rem 1rem;
-      background: var(--accent-strong);
-      color: #ffffff;
-      border-radius: 0.375rem;
-      text-decoration: none;
+      padding: 0.5rem 0.9rem;
+      border-radius: 6px;
+      background-color: var(--accent);
+      color: var(--accent-ink);
       font-weight: 600;
+      text-decoration: none;
     }
 
     .skip-link:focus {
       inset-inline-start: 0.75rem;
     }
 
-    :where(a, button, input, select, [tabindex]):focus-visible {
-      outline: 3px solid var(--focus-ring);
-      outline-offset: 2px;
+    /* Header & Global Command Bar */
+    .topbar {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 20;
+      background-color: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      border-block-end: 1px solid var(--border-hairline);
     }
 
-    header {
-      border-block-end: 1px solid var(--border);
-      background: var(--surface);
-      padding-block: 1rem;
-      padding-inline: 1.5rem;
-    }
-
-    .header-inner {
-      max-inline-size: 1320px;
+    .topbar-inner {
+      max-inline-size: 1380px;
       margin-inline: auto;
+      padding-block: 0.85rem;
+      padding-inline: clamp(1rem, 2.5vw, 1.75rem);
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
-      gap: 1rem;
+      gap: 0.85rem 1.25rem;
     }
 
-    h1 {
-      margin: 0;
-      font-size: 1.35rem;
-      letter-spacing: 0.01em;
-    }
-
-    .subtitle {
-      margin: 0.15rem 0 0;
-      color: var(--text-muted);
-      font-size: 0.9rem;
-    }
-
-    nav {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    button {
-      min-block-size: 40px;
-      padding-block: 0.45rem;
-      padding-inline: 0.9rem;
-      border-radius: 0.45rem;
-      border: 1px solid var(--border);
-      background: var(--surface-elevated);
-      color: var(--text);
-      font-weight: 600;
-      font-size: 0.875rem;
-      cursor: pointer;
-    }
-
-    button:hover {
-      border-color: var(--accent);
-    }
-
-    .btn-primary {
-      background: var(--accent-strong);
-      border-color: var(--accent);
-      color: #ffffff;
-    }
-
-    .btn-danger {
-      background: #7f1d1d;
-      border-color: var(--danger);
-      color: #ffffff;
-    }
-
-    main {
-      max-inline-size: 1320px;
-      inline-size: 100%;
-      margin-inline: auto;
-      padding: 1.5rem;
-      display: grid;
-      gap: 1.25rem;
-      align-content: start;
-    }
-
-    .status-banner {
-      padding: 0.75rem 1rem;
-      border-radius: 0.5rem;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      min-block-size: 2.75rem;
+    .brand {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 1rem;
-    }
-
-    .metrics-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 1rem;
-    }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 0.6rem;
-      padding: 1rem;
+      gap: 0.85rem;
       min-inline-size: 0;
     }
 
-    .card-label {
-      margin: 0;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .card-value {
-      margin: 0.35rem 0 0;
-      font-size: 1.5rem;
-      font-weight: 700;
-    }
-
-    .panels-grid {
+    .brand-mark {
+      inline-size: 34px;
+      block-size: 34px;
+      flex: none;
+      border-radius: 8px;
+      border: 1px solid var(--border-control);
+      background-color: var(--bg-surface);
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-      gap: 1.25rem;
+      place-items: center;
+      color: var(--accent);
     }
 
-    h2 {
-      margin: 0 0 0.75rem;
-      font-size: 1.05rem;
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(1.02rem, 1.4vw, 1.2rem);
+      font-weight: 600;
+      letter-spacing: -0.015em;
     }
 
-    h3 {
-      margin: 0 0 0.5rem;
-      font-size: 0.95rem;
+    .brand-sub {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.82rem;
     }
 
+    .topbar-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem;
+    }
+
+    /* Interactive Tabs Row */
+    .tabbar-shell {
+      max-inline-size: 1380px;
+      margin-inline: auto;
+      padding-inline: clamp(1rem, 2.5vw, 1.75rem);
+      border-block-start: 1px solid var(--border-hairline);
+    }
+
+    .tablist {
+      display: flex;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      gap: 0.25rem;
+      scroll-snap-type: inline proximity;
+    }
+
+    @supports (animation-timeline: scroll(self inline)) {
+      .tablist {
+        --fade-size: 2.25rem;
+        --fade-dir: right;
+        --fade-start-pos: 0;
+        --fade-end-pos: 100%;
+        mask:
+          linear-gradient(black, black) no-clip subtract,
+          linear-gradient(to var(--fade-dir), black, transparent) var(--fade-start-pos) 0 / var(--fade-start) 100% no-repeat no-clip,
+          linear-gradient(to var(--fade-dir), transparent, black) var(--fade-end-pos) 0 / var(--fade-end) 100% no-repeat no-clip;
+        animation: reveal-fade-start linear both, hide-fade-end linear both;
+        animation-timeline: scroll(self inline);
+        animation-range: 0 var(--fade-size), calc(100% - var(--fade-size)) 100%;
+      }
+    }
+
+    @keyframes reveal-fade-start {
+      to {
+        --fade-start: var(--fade-size);
+      }
+    }
+
+    @keyframes hide-fade-end {
+      from {
+        --fade-end: var(--fade-size);
+      }
+    }
+
+    .tab-btn {
+      position: relative;
+      flex: none;
+      scroll-snap-align: start;
+      min-block-size: 44px;
+      padding-block: 0.65rem;
+      padding-inline: 0.95rem;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .tab-btn[aria-selected="true"] {
+      color: var(--text-primary);
+    }
+
+    .tab-btn[aria-selected="true"]::after {
+      content: "";
+      position: absolute;
+      inset: auto 0.65rem 0;
+      border-block-end: 3px solid var(--accent);
+    }
+
+    /* Buttons & Form Controls */
+    button,
+    input,
+    select {
+      font-family: inherit;
+      font-size: 0.875rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      min-block-size: 38px;
+      padding-block: 0.45rem;
+      padding-inline: 0.85rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-control);
+      background-color: var(--bg-elevated);
+      color: var(--text-primary);
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background-color 0.12s ease, border-color 0.12s ease;
+    }
+
+    .btn:hover {
+      background-color: var(--bg-hover);
+      border-color: #54617c;
+    }
+
+    .btn-primary {
+      background-color: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-ink);
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      background-color: #7bb9ff;
+      border-color: #7bb9ff;
+    }
+
+    .btn-danger {
+      background-color: var(--danger-bg);
+      border-color: #8f363a;
+      color: #ffd3d5;
+    }
+
+    .btn-danger:hover {
+      background-color: #3f1217;
+      border-color: var(--danger);
+    }
+
+    .btn-sm {
+      min-block-size: 32px;
+      padding-block: 0.3rem;
+      padding-inline: 0.65rem;
+      font-size: 0.8rem;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      min-block-size: 38px;
+      inline-size: 100%;
+      padding-block: 0.45rem;
+      padding-inline: 0.7rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-control);
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+    }
+
+    input:not([type="range"]):user-invalid,
+    select:user-invalid {
+      border-color: var(--danger);
+    }
+
+    input:not([type="range"]):user-valid {
+      border-color: #2f7a58;
+    }
+
+    label {
+      display: block;
+      margin-block-end: 0.35rem;
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      font-weight: 500;
+    }
+
+    /* Workspace Container */
+    main {
+      max-inline-size: 1380px;
+      inline-size: 100%;
+      margin-inline: auto;
+      padding-block: 1.25rem 2.25rem;
+      padding-inline: clamp(1rem, 2.5vw, 1.75rem);
+      display: grid;
+      gap: 1.15rem;
+      align-content: start;
+    }
+
+    /* Live Status Banner & Instrument Strip */
+    .feedback-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding-block: 0.65rem;
+      padding-inline: 0.95rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-surface);
+      font-size: 0.86rem;
+    }
+
+    .feedback-bar[data-tone="ok"] {
+      border-color: #1f5c3e;
+      background-color: #05160e;
+    }
+
+    .feedback-bar[data-tone="warn"] {
+      border-color: #6b4e11;
+      background-color: #161004;
+    }
+
+    .feedback-bar[data-tone="danger"] {
+      border-color: #7c2d32;
+      background-color: #180709;
+    }
+
+    .telemetry-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-radius: 10px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-surface);
+      overflow: hidden;
+    }
+
+    .telemetry-cell {
+      padding: 0.9rem 1.05rem;
+      min-inline-size: 0;
+      border-inline-end: 1px solid var(--border-hairline);
+    }
+
+    .telemetry-cell:last-child {
+      border-inline-end: 0;
+    }
+
+    @media (width < 880px) {
+      .telemetry-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .telemetry-cell:nth-child(2n) {
+        border-inline-end: 0;
+      }
+
+      .telemetry-cell:nth-child(-n+2) {
+        border-block-end: 1px solid var(--border-hairline);
+      }
+    }
+
+    @media (width < 480px) {
+      .telemetry-strip {
+        grid-template-columns: 1fr;
+      }
+
+      .telemetry-cell {
+        border-inline-end: 0;
+        border-block-end: 1px solid var(--border-hairline);
+      }
+
+      .telemetry-cell:last-child {
+        border-block-end: 0;
+      }
+    }
+
+    .metric-label {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .metric-value {
+      margin: 0.2rem 0 0.1rem;
+      font-size: 1.45rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
+
+    .metric-sub {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* Tabpanels Grid Cell */
+    .panels-host {
+      display: grid;
+    }
+
+    .panels-host > [role="tabpanel"] {
+      grid-row: 1;
+      grid-column: 1;
+      min-inline-size: 0;
+    }
+
+    .panel-inner {
+      display: grid;
+      gap: 1.15rem;
+    }
+
+    /* Structured Cards & Layouts */
+    .surface-card {
+      border-radius: 10px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-surface);
+      padding: 1.15rem;
+      min-inline-size: 0;
+    }
+
+    .surface-card-hero {
+      border-color: #293244;
+    }
+
+    .card-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.65rem;
+      margin-block-end: 0.9rem;
+    }
+
+    .card-head h2,
+    .card-head h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .card-desc {
+      margin: 0.2rem 0 0;
+      max-inline-size: 74ch;
+      color: var(--text-secondary);
+      font-size: 0.84rem;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      gap: 1.15rem;
+      align-items: start;
+    }
+
+    .split-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.15rem;
+      align-items: start;
+    }
+
+    @media (width < 1024px) {
+      .overview-grid,
+      .split-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .stack {
+      display: grid;
+      gap: 1rem;
+      min-inline-size: 0;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+
+    .form-grid .span-full {
+      grid-column: 1 / -1;
+    }
+
+    @media (width < 540px) {
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Interactive Topology Diagram */
+    .topology-canvas-wrap {
+      border-radius: 8px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-canvas);
+      padding: 0.65rem;
+      overflow: hidden;
+    }
+
+    .topology-svg {
+      display: block;
+      inline-size: 100%;
+      block-size: auto;
+      max-block-size: 390px;
+    }
+
+    .graph-node {
+      cursor: pointer;
+    }
+
+    .graph-node rect {
+      fill: #0f131b;
+      stroke: #3b4559;
+      stroke-width: 1.4;
+      transition: stroke 0.12s ease, fill 0.12s ease;
+    }
+
+    .graph-node:hover rect,
+    .graph-node:focus-visible rect {
+      stroke: var(--accent);
+      fill: #141b27;
+    }
+
+    .graph-node[data-selected="true"] rect {
+      stroke: var(--accent);
+      stroke-width: 2.2;
+      fill: #122036;
+    }
+
+    .graph-node[data-revoked="true"] rect {
+      stroke: var(--danger);
+      fill: #21090c;
+    }
+
+    .graph-node text {
+      fill: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 600;
+      pointer-events: none;
+    }
+
+    .graph-node .node-sub {
+      fill: var(--text-secondary);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 400;
+    }
+
+    .graph-node[data-revoked="true"] .node-sub {
+      fill: #fda4af;
+    }
+
+    .topology-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-block-start: 0.75rem;
+      color: var(--text-secondary);
+      font-size: 0.79rem;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .legend-swatch {
+      inline-size: 14px;
+      block-size: 3px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    /* Status Badges (paired with icon/shape for WCAG 1.4.1) */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.16rem 0.52rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 0.76rem;
+      font-weight: 600;
+      line-height: 1.3;
+      white-space: nowrap;
+    }
+
+    .badge-ok {
+      background-color: var(--ok-bg);
+      border-color: #216e4a;
+      color: #8ce9b9;
+    }
+
+    .badge-warn {
+      background-color: var(--warn-bg);
+      border-color: #7c5b10;
+      color: #fbd36a;
+    }
+
+    .badge-danger {
+      background-color: var(--danger-bg);
+      border-color: #873236;
+      color: #ffb8bb;
+    }
+
+    .badge-neutral {
+      background-color: var(--bg-elevated);
+      border-color: var(--border-control);
+      color: var(--text-secondary);
+    }
+
+    /* Key-Value & Result Readouts */
+    .kv-list {
+      margin: 0;
+      display: grid;
+      gap: 0.45rem;
+    }
+
+    .kv-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 0.75rem;
+      padding-block: 0.3rem;
+      border-block-end: 1px solid var(--border-hairline);
+      font-size: 0.83rem;
+    }
+
+    .kv-row:last-child {
+      border-block-end: 0;
+    }
+
+    .kv-row dt {
+      color: var(--text-secondary);
+    }
+
+    .kv-row dd {
+      margin: 0;
+      text-align: end;
+      word-break: break-all;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 0.81em;
+    }
+
+    .probe-output {
+      margin-block-start: 0.75rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-canvas);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-block-size: 190px;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+    }
+
+    .probe-block {
+      border-radius: 8px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-elevated);
+      padding: 0.95rem;
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .probe-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .probe-head h3 {
+      margin: 0;
+      font-size: 0.93rem;
+      font-weight: 600;
+    }
+
+    .probe-desc {
+      margin: 0;
+      color: var(--text-secondary);
+      font-size: 0.82rem;
+      max-inline-size: 70ch;
+    }
+
+    /* Responsive Accessible Tables */
     .table-wrapper {
       overflow: auto;
       max-inline-size: 100%;
-      max-block-size: 360px;
-      scrollbar-gutter: stable;
+      max-block-size: min(440px, 65vh);
+      border-radius: 8px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-canvas);
       container-type: inline-size;
-      border: 1px solid var(--border);
-      border-radius: 0.45rem;
+      scrollbar-gutter: stable;
+      overscroll-behavior: contain;
     }
 
     table {
       inline-size: 100%;
       border-collapse: separate;
       border-spacing: 0;
-      font-size: 0.875rem;
+      text-align: start;
+      font-size: 0.84rem;
     }
 
     caption {
-      text-align: start;
-      padding: 0.55rem 0.75rem;
-      color: var(--text-muted);
-      font-size: 0.8rem;
-      background: var(--surface-elevated);
-      border-block-end: 1px solid var(--border);
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      overflow: hidden;
+      clip-path: inset(50%);
+    }
+
+    thead {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 2;
+      background-color: var(--bg-surface);
+    }
+
+    th,
+    td {
+      padding: 0.6rem 0.75rem;
+      border-block-end: 1px solid var(--border-hairline);
+      vertical-align: middle;
     }
 
     thead th {
-      position: sticky;
-      inset-block-start: 0;
-      z-index: 1;
-      background: var(--surface-elevated);
-      color: var(--text-muted);
-      text-align: start;
-      padding: 0.55rem 0.75rem;
-      border-block-end: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.79rem;
       white-space: nowrap;
-    }
-
-    tbody th,
-    tbody td {
-      padding: 0.55rem 0.75rem;
-      border-block-end: 1px solid var(--border);
-      vertical-align: top;
+      border-block-end: 1px solid var(--border-control);
     }
 
     tbody th {
-      text-align: start;
+      position: sticky;
+      inset-inline-start: 0;
+      z-index: 1;
+      background-color: var(--bg-canvas);
       font-weight: 600;
+      text-align: start;
+      white-space: nowrap;
     }
 
-    .badge {
-      display: inline-block;
-      padding: 0.15rem 0.5rem;
-      border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: 700;
+    tbody tr:hover td,
+    tbody tr:hover th {
+      background-color: var(--bg-surface);
     }
 
-    .badge-active {
-      background: rgba(52, 211, 153, 0.16);
-      color: var(--success);
-      border: 1px solid var(--success);
+    .td-wrap {
+      max-inline-size: 46ch;
+      white-space: normal;
+      overflow-wrap: anywhere;
     }
 
-    .badge-revoked,
-    .badge-critical {
-      background: rgba(248, 113, 113, 0.16);
-      color: var(--danger);
-      border: 1px solid var(--danger);
+    @container (width < 560px) {
+      .responsive-table table,
+      .responsive-table thead,
+      .responsive-table tbody,
+      .responsive-table tr,
+      .responsive-table th,
+      .responsive-table td {
+        display: block;
+      }
+
+      .responsive-table thead {
+        display: none;
+      }
+
+      .responsive-table tbody tr {
+        padding: 0.5rem 0.25rem;
+        border-block-end: 1px solid var(--border-control);
+      }
+
+      .responsive-table tbody th {
+        position: static;
+        background-color: var(--bg-surface);
+        border-radius: 6px;
+        margin-block-end: 0.25rem;
+      }
+
+      .responsive-table tbody td {
+        border-block-end: 0;
+        padding-block: 0.25rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+      }
+
+      .responsive-table tbody td::before {
+        content: attr(data-label);
+        color: var(--text-secondary);
+        font-weight: 500;
+        flex: none;
+      }
     }
 
-    .badge-high {
-      background: rgba(251, 191, 36, 0.16);
-      color: var(--warning);
-      border: 1px solid var(--warning);
-    }
-
-    .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.8rem;
-    }
-
-    .graph-edges {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-    }
-
-    .graph-edges li {
-      padding: 0.3rem 0.65rem;
-      border-radius: 0.4rem;
-      background: var(--surface-elevated);
-      border: 1px solid var(--border);
-      font-size: 0.8rem;
-    }
-
-    .transfer-form {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.65rem;
-      align-items: end;
-      margin-block-end: 1rem;
-    }
-
-    .field {
-      display: grid;
-      gap: 0.25rem;
-      flex: 1 1 160px;
-    }
-
-    label {
-      font-size: 0.8rem;
-      color: var(--text-muted);
-    }
-
-    input,
-    select {
-      min-block-size: 38px;
-      padding: 0.4rem 0.6rem;
-      border-radius: 0.4rem;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 0.875rem;
-    }
-
+    /* Native Modal Dialogs */
     dialog {
-      background: var(--surface);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 0.65rem;
-      padding: 1.25rem;
-      max-inline-size: 460px;
+      margin: auto;
+      padding: 1.35rem;
+      max-inline-size: 560px;
       inline-size: calc(100% - 2rem);
+      border-radius: 10px;
+      border: 1px solid var(--border-control);
+      background-color: var(--bg-surface);
+      color: var(--text-primary);
+    }
+
+    dialog:modal {
+      overscroll-behavior: contain;
     }
 
     dialog::backdrop {
-      background: rgba(0, 0, 0, 0.7);
+      background-color: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(4px);
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
+
+    dialog h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    dialog p {
+      margin: 0 0 0.9rem;
+      color: var(--text-secondary);
+      font-size: 0.86rem;
     }
 
     .dialog-actions {
       display: flex;
       justify-content: flex-end;
+      gap: 0.55rem;
+      margin-block-start: 1.1rem;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-wrap: wrap;
       gap: 0.5rem;
-      margin-block-start: 1rem;
+      align-items: center;
+    }
+
+    .callout {
+      padding: 0.75rem 0.9rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-hairline);
+      background-color: var(--bg-canvas);
+      color: var(--text-secondary);
+      font-size: 0.83rem;
+    }
+
+    .callout strong {
+      color: var(--text-primary);
+    }
+
+    .alert-row-desc {
+      max-inline-size: 60ch;
+      white-space: normal;
+    }
+
+    .hop-list {
+      margin: 0.45rem 0 0;
+      padding-inline-start: 1.1rem;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+      display: grid;
+      gap: 0.25rem;
     }
 
     footer {
-      border-block-start: 1px solid var(--border);
-      padding: 0.9rem 1.5rem;
-      color: var(--text-muted);
+      max-inline-size: 1380px;
+      inline-size: 100%;
+      margin-inline: auto;
+      padding: 1rem clamp(1rem, 2.5vw, 1.75rem) 1.5rem;
+      border-block-start: 1px solid var(--border-hairline);
+      color: var(--text-secondary);
       font-size: 0.8rem;
-      text-align: center;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 0.5rem;
     }
 
-    @container (width < 460px) {
-      table, thead, tbody, tr, th, td {
-        display: block;
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        transition: none !important;
+        animation: none !important;
+      }
+    }
+
+    @media (forced-colors: active) {
+      .surface-card,
+      .telemetry-strip,
+      .btn,
+      .badge,
+      dialog {
+        border: 1px solid ButtonBorder;
       }
 
-      thead {
-        display: none;
+      .tab-btn[aria-selected="true"]::after {
+        border-block-end-color: Highlight;
       }
 
-      tbody tr {
-        border-block-end: 2px solid var(--border);
-        padding: 0.5rem;
-      }
-
-      tbody th,
-      tbody td {
-        border: 0;
-        padding: 0.25rem 0.5rem;
+      .graph-node rect {
+        stroke: CanvasText;
       }
     }
   </style>
 </head>
 <body>
-  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <a href="#main-content" class="skip-link">Skip to workspace</a>
 
-  <header>
-    <div class="header-inner">
-      <div>
-        <h1>Q-Vault Sentinel Control Plane</h1>
-        <p class="subtitle">Post-Quantum Identity Authority (ML-KEM-768 / ML-DSA-65 / X25519) &amp; Deterministic Watchdog</p>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L4 5v6.09c0 5.05 3.41 9.76 8 10.91 4.59-1.15 8-5.86 8-10.91V5l-8-3z"/>
+            <path d="M9 12l2 2 4-4"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Q-Vault Sentinel Control Plane</h1>
+          <p class="brand-sub">Post-quantum key lifecycle authority and deterministic telemetry monitor</p>
+        </div>
       </div>
-      <nav aria-label="Control Actions">
-        <button type="button" id="btn-refresh">Refresh</button>
-        <button type="button" id="btn-rotate" class="btn-primary">Rotate Epoch</button>
-        <button type="button" id="btn-verify-log">Verify Audit Chain</button>
-        <button type="button" id="btn-backup">Create Signed Backup</button>
-        <button type="button" id="btn-simulate-attack" class="btn-danger">Trigger Lateral-Movement Test</button>
-      </nav>
+
+      <div class="topbar-actions">
+        <span id="header-health-badge" class="badge badge-ok">
+          <span aria-hidden="true">&#9679;</span>
+          <span>Authority online</span>
+        </span>
+        <button type="button" id="btn-refresh" class="btn">Refresh</button>
+        <button type="button" id="btn-rotate" class="btn btn-primary">Rotate epoch</button>
+        <button type="button" id="btn-verify-top" class="btn">Verify chain</button>
+      </div>
+    </div>
+
+    <div class="tabbar-shell">
+      <div id="main-tablist" class="tablist" focusgroup="tablist nomemory" role="tablist" aria-label="Control plane sections">
+        <button type="button" role="tab" id="tab-overview" aria-selected="true" focusgroupstart data-panel="panel-overview" class="tab-btn">Overview</button>
+        <button type="button" role="tab" id="tab-lifecycle" aria-selected="false" data-panel="panel-lifecycle" class="tab-btn">Identities &amp; Lifecycle</button>
+        <button type="button" role="tab" id="tab-security" aria-selected="false" data-panel="panel-security" class="tab-btn">Security Lab</button>
+        <button type="button" role="tab" id="tab-ledger" aria-selected="false" data-panel="panel-ledger" class="tab-btn">Audit Ledger</button>
+      </div>
     </div>
   </header>
 
   <main id="main-content" tabindex="-1">
-    <div id="status-banner" class="status-banner" role="status" aria-live="polite">
-      <span>Control plane connected. Monitoring active keys and audit telemetry.</span>
+    <div id="status-banner" class="feedback-bar" role="status" aria-live="polite" data-tone="neutral">
+      <span id="status-banner-msg">Loading control-plane state...</span>
       <span id="chain-head" class="mono"></span>
     </div>
 
-    <section aria-labelledby="metrics-heading">
-      <h2 id="metrics-heading">Operational Telemetry</h2>
-      <div class="metrics-grid">
-        <article class="card">
-          <p class="card-label">Current Key Epoch</p>
-          <p id="metric-epoch" class="card-value">0</p>
-        </article>
-        <article class="card">
-          <p class="card-label">Active Service Nodes</p>
-          <p id="metric-active-nodes" class="card-value">0</p>
-        </article>
-        <article class="card">
-          <p class="card-label">Revoked Nodes</p>
-          <p id="metric-revoked-nodes" class="card-value">0</p>
-        </article>
-        <article class="card">
-          <p class="card-label">Total Alerts</p>
-          <p id="metric-alerts" class="card-value">0</p>
-        </article>
-        <article class="card">
-          <p class="card-label">Auto-Revocations</p>
-          <p id="metric-autorevoke" class="card-value">0</p>
-        </article>
-        <article class="card">
-          <p class="card-label">Audit Ledger Entries</p>
-          <p id="metric-entries" class="card-value">0</p>
-        </article>
+    <section aria-label="Operational summary" class="telemetry-strip">
+      <div class="telemetry-cell">
+        <p class="metric-label">Active key epoch</p>
+        <p id="metric-epoch" class="metric-value">0</p>
+        <p id="metric-epoch-sub" class="metric-sub">30s grace window</p>
+      </div>
+      <div class="telemetry-cell">
+        <p class="metric-label">Service identities</p>
+        <p id="metric-nodes-ratio" class="metric-value">0 / 0</p>
+        <p id="metric-nodes-sub" class="metric-sub">0 revoked</p>
+      </div>
+      <div class="telemetry-cell">
+        <p class="metric-label">Watchdog alerts</p>
+        <p id="metric-alerts" class="metric-value">0</p>
+        <p id="metric-alerts-sub" class="metric-sub">0 automated revocations</p>
+      </div>
+      <div class="telemetry-cell">
+        <p class="metric-label">Audit records</p>
+        <p id="metric-entries" class="metric-value">0</p>
+        <p id="metric-checkpoint-sub" class="metric-sub">Checkpoint every 100 entries</p>
       </div>
     </section>
 
-    <section class="card" aria-labelledby="transfer-heading">
-      <h2 id="transfer-heading">Quantum-Safe Service Transfer</h2>
-      <form id="transfer-form" class="transfer-form">
-        <div class="field">
-          <label for="src-node">Source Service</label>
-          <select id="src-node" name="source_node"></select>
-        </div>
-        <div class="field">
-          <label for="dst-node">Target Service</label>
-          <select id="dst-node" name="target_node"></select>
-        </div>
-        <div class="field">
-          <label for="payload-text">Message Payload</label>
-          <input id="payload-text" name="payload_text" type="text" value="Quarterly ledger settlement batch #104" required>
-        </div>
-        <button type="submit" class="btn-primary">Execute Hybrid PQC Transfer</button>
-      </form>
+    <div class="panels-host">
+      <!-- PANEL 1: OVERVIEW & TOPOLOGY -->
+      <div id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
+        <div class="panel-inner">
+          <div class="overview-grid">
+            <section class="surface-card surface-card-hero" aria-labelledby="topology-heading">
+              <div class="card-head">
+                <div>
+                  <h2 id="topology-heading">Service access topology</h2>
+                  <p class="card-desc">Directed policy edges enforced by the deterministic watchdog. Select any service node to inspect its keys or contain credentials.</p>
+                </div>
+                <button type="button" id="btn-lateral-overview" class="btn btn-danger btn-sm">Trigger lateral movement</button>
+              </div>
 
-      <h3>Authorized Service Graph Paths</h3>
-      <ul id="graph-edges" class="graph-edges"></ul>
-    </section>
+              <div class="topology-canvas-wrap">
+                <svg id="topology-svg" class="topology-svg" viewBox="0 0 760 390" role="img" aria-label="Enterprise service graph diagram"></svg>
+              </div>
 
-    <div class="panels-grid">
-      <section class="card" aria-labelledby="nodes-heading">
-        <h2 id="nodes-heading">Service Node Registry</h2>
-        <div tabindex="0" role="region" aria-labelledby="nodes-table-caption" class="table-wrapper">
-          <table>
-            <caption id="nodes-table-caption">Registered PQC identities and revocation status</caption>
-            <thead>
-              <tr>
-                <th scope="col">Node ID</th>
-                <th scope="col">Status</th>
-                <th scope="col">ML-DSA FP</th>
-                <th scope="col">Epoch</th>
-                <th scope="col">Action</th>
-              </tr>
-            </thead>
-            <tbody id="nodes-tbody"></tbody>
-          </table>
-        </div>
-      </section>
+              <div class="topology-legend">
+                <span class="legend-item"><span class="legend-swatch" style="background: var(--accent);"></span>Authorized policy edge</span>
+                <span class="legend-item"><span class="legend-swatch" style="background: var(--danger);"></span>Unauthorized hop or revoked node</span>
+                <span class="legend-item"><span class="legend-swatch" style="background: var(--ok);"></span>Active selected node</span>
+              </div>
+            </section>
 
-      <section class="card" aria-labelledby="alerts-heading">
-        <h2 id="alerts-heading">Watchdog Alerts</h2>
-        <div tabindex="0" role="region" aria-labelledby="alerts-table-caption" class="table-wrapper">
-          <table>
-            <caption id="alerts-table-caption">Deterministic rule and service-graph containment alerts</caption>
-            <thead>
-              <tr>
-                <th scope="col">Severity</th>
-                <th scope="col">Rule</th>
-                <th scope="col">Actor</th>
-                <th scope="col">Description</th>
-              </tr>
-            </thead>
-            <tbody id="alerts-tbody"></tbody>
-          </table>
+            <div class="stack">
+              <section class="surface-card" aria-labelledby="inspector-heading">
+                <div class="card-head">
+                  <div>
+                    <h2 id="inspector-heading">Selected service node</h2>
+                    <p id="inspector-subtitle" class="card-desc">Click any node in the graph to inspect its identity material.</p>
+                  </div>
+                  <span id="inspector-badge" class="badge badge-neutral">None</span>
+                </div>
+
+                <dl id="inspector-kv" class="kv-list"></dl>
+
+                <div style="margin-block-start: 0.75rem;">
+                  <p class="metric-label">Recent service transitions</p>
+                  <ul id="inspector-hops" class="hop-list"></ul>
+                </div>
+
+                <div id="inspector-actions" class="btn-group" style="margin-block-start: 0.9rem;"></div>
+              </section>
+
+              <section class="surface-card" aria-labelledby="transfer-heading">
+                <div class="card-head">
+                  <div>
+                    <h2 id="transfer-heading">Send encrypted message</h2>
+                    <p class="card-desc">Executes an ephemeral X25519 + ML-KEM-768 handshake and AAD-bound AES-256-GCM chunk transfer.</p>
+                  </div>
+                </div>
+
+                <form id="transfer-form" class="form-grid">
+                  <div>
+                    <label for="src-node">Source service</label>
+                    <select id="src-node" name="source_node"></select>
+                  </div>
+                  <div>
+                    <label for="dst-node">Target service</label>
+                    <select id="dst-node" name="target_node"></select>
+                  </div>
+                  <div class="span-full">
+                    <label for="payload-text">Message payload</label>
+                    <input id="payload-text" name="payload_text" type="text" value="Settlement batch verification payload #104" required>
+                  </div>
+                  <div class="span-full">
+                    <button type="submit" class="btn btn-primary">Send encrypted payload</button>
+                  </div>
+                </form>
+
+                <pre id="transfer-output" class="probe-output" hidden></pre>
+              </section>
+            </div>
+          </div>
+
+          <section class="surface-card" aria-labelledby="overview-alerts-heading">
+            <div class="card-head">
+              <div>
+                <h2 id="overview-alerts-heading">Watchdog security alerts</h2>
+                <p class="card-desc">Deterministic rule and graph violations evaluated outside the AI/ML boundary.</p>
+              </div>
+              <span id="overview-alerts-count" class="badge badge-neutral">0 recorded</span>
+            </div>
+
+            <div tabindex="0" role="region" aria-labelledby="overview-alerts-heading" class="table-wrapper responsive-table">
+              <table>
+                <caption>Active and historical watchdog alerts</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Severity</th>
+                    <th scope="col">Rule</th>
+                    <th scope="col">Actor</th>
+                    <th scope="col">Path &amp; timing</th>
+                    <th scope="col">Description</th>
+                  </tr>
+                </thead>
+                <tbody id="alerts-tbody"></tbody>
+              </table>
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
+
+      <!-- PANEL 2: IDENTITIES & LIFECYCLE -->
+      <div id="panel-lifecycle" role="tabpanel" aria-labelledby="tab-lifecycle" hidden="until-found">
+        <div class="panel-inner">
+          <div class="split-grid">
+            <section class="surface-card" aria-labelledby="epoch-heading">
+              <div class="card-head">
+                <div>
+                  <h2 id="epoch-heading">Epoch rotation &amp; grace window</h2>
+                  <p class="card-desc">Prior epochs remain accepted only within the configured post-rotation grace interval.</p>
+                </div>
+                <button type="button" id="btn-rotate-lifecycle" class="btn btn-primary btn-sm">Rotate epoch</button>
+              </div>
+
+              <dl id="epoch-kv" class="kv-list"></dl>
+
+              <form id="epoch-check-form" class="form-grid" style="margin-block-start: 0.9rem;">
+                <div>
+                  <label for="check-epoch-num">Epoch to evaluate</label>
+                  <input id="check-epoch-num" type="number" min="0" value="0" required>
+                </div>
+                <div>
+                  <label for="check-epoch-offset">Simulated time offset (seconds)</label>
+                  <input id="check-epoch-offset" type="number" step="1" value="0" required>
+                </div>
+                <div class="span-full btn-group">
+                  <button type="submit" class="btn btn-sm">Evaluate epoch validity</button>
+                  <button type="button" id="btn-check-post-cutoff" class="btn btn-sm">Test prior epoch after cutoff</button>
+                </div>
+              </form>
+              <pre id="epoch-output" class="probe-output" hidden></pre>
+            </section>
+
+            <section class="surface-card" aria-labelledby="backup-heading">
+              <div class="card-head">
+                <div>
+                  <h2 id="backup-heading">Signed key backups (.qvbak)</h2>
+                  <p class="card-desc">Backups are encrypted under the master KEK and verified with ML-DSA-65 before decryption.</p>
+                </div>
+                <div class="btn-group">
+                  <button type="button" id="btn-create-backup" class="btn btn-primary btn-sm">Create backup</button>
+                  <button type="button" id="btn-probe-backup-quick" class="btn btn-sm">Verify tamper rejection</button>
+                </div>
+              </div>
+
+              <div tabindex="0" role="region" aria-label="Encrypted authority backups" class="table-wrapper responsive-table" style="max-block-size: 240px;">
+                <table>
+                  <caption>Available authority backup archives</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Archive file</th>
+                      <th scope="col">Size</th>
+                      <th scope="col">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="backups-tbody"></tbody>
+                </table>
+              </div>
+              <pre id="backup-output" class="probe-output" hidden></pre>
+            </section>
+          </div>
+
+          <section class="surface-card" aria-labelledby="registry-heading">
+            <div class="card-head">
+              <div>
+                <h2 id="registry-heading">Service node registry</h2>
+                <p class="card-desc">Every node holds segregated ML-DSA-65 signing keys and ML-KEM-768 + X25519 establishment keys persisted in SQLite WAL.</p>
+              </div>
+            </div>
+
+            <div tabindex="0" role="region" aria-labelledby="registry-heading" class="table-wrapper responsive-table">
+              <table>
+                <caption>Registered service nodes and public key fingerprints</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Node ID</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Epoch</th>
+                    <th scope="col">ML-DSA-65 FP</th>
+                    <th scope="col">ML-KEM-768 FP</th>
+                    <th scope="col">Lifecycle action</th>
+                  </tr>
+                </thead>
+                <tbody id="nodes-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- PANEL 3: SECURITY & DETECTION LAB -->
+      <div id="panel-security" role="tabpanel" aria-labelledby="tab-security" hidden="until-found">
+        <div class="panel-inner">
+          <section class="surface-card" aria-labelledby="detector-metrics-heading">
+            <div class="card-head">
+              <div>
+                <h2 id="detector-metrics-heading">Zero-AI watchdog engine telemetry</h2>
+                <p class="card-desc">Deterministic scoring, clock-skew tolerance reordering, and live evaluation metrics reported by WatchdogDetector.</p>
+              </div>
+              <button type="button" id="btn-flush-detector" class="btn btn-sm">Flush clock-skew buffer</button>
+            </div>
+            <dl id="detector-metrics-kv" class="kv-list"></dl>
+          </section>
+
+          <div class="split-grid">
+            <section class="surface-card stack" aria-labelledby="proto-lab-heading">
+              <div>
+                <div class="card-head">
+                  <h2 id="proto-lab-heading">Cryptographic protocol verification</h2>
+                </div>
+                <p class="card-desc">Run live checks directly against active NodeGateway sessions and authority verification rules.</p>
+              </div>
+
+              <div class="probe-block">
+                <div class="probe-head">
+                  <h3>1. Anti-replay sliding window</h3>
+                  <button type="button" id="btn-probe-replay" class="btn btn-primary btn-sm">Run replay check</button>
+                </div>
+                <p class="probe-desc">Completes a hybrid handshake, delivers sequence 0 once, then replays identical ciphertext + AAD to confirm 1,024-bit window rejection and REPLAY_001 alerting.</p>
+                <pre id="out-probe-replay" class="probe-output" hidden></pre>
+              </div>
+
+              <div class="probe-block">
+                <div class="probe-head">
+                  <h3>2. Recipient-bound AAD tamper</h3>
+                  <button type="button" id="btn-probe-aad" class="btn btn-primary btn-sm">Test AAD substitution</button>
+                </div>
+                <p class="probe-desc">Encrypts a payload bound to Auth and attempts decryption with recipient altered to PayrollDB, verifying AES-256-GCM raises InvalidTag.</p>
+                <pre id="out-probe-aad" class="probe-output" hidden></pre>
+              </div>
+
+              <div class="probe-block">
+                <div class="probe-head">
+                  <h3>3. Peer-bound session resumption</h3>
+                  <button type="button" id="btn-probe-resumption" class="btn btn-primary btn-sm">Test hijack &amp; ticket replay</button>
+                </div>
+                <p class="probe-desc">Issues a signed single-use resumption ticket for WebPortal, verifies PayrollDB impersonation fails, confirms valid rotation, and blocks ticket reuse.</p>
+                <pre id="out-probe-resumption" class="probe-output" hidden></pre>
+              </div>
+            </section>
+
+            <section class="surface-card stack" aria-labelledby="watchdog-lab-heading">
+              <div>
+                <div class="card-head">
+                  <h2 id="watchdog-lab-heading">Deterministic watchdog verification</h2>
+                </div>
+                <p class="card-desc">Exercise graph lateral-movement containment, context-aware privilege escalation rules, and out-of-order clock-skew buffering.</p>
+              </div>
+
+              <div class="probe-block">
+                <div class="probe-head">
+                  <h3>1. Multi-hop lateral movement</h3>
+                  <button type="button" id="btn-probe-lateral" class="btn btn-danger btn-sm">Trigger lateral movement</button>
+                </div>
+                <p class="probe-desc">Replays FileGateway traversing WebPortal, VaultDB, PayrollDB, and Admin within 60s to trigger LAT_MOVE_001 and automated key revocation across all gateways.</p>
+                <pre id="out-probe-lateral" class="probe-output" hidden></pre>
+              </div>
+
+              <div class="probe-block">
+                <div class="probe-head">
+                  <h3>2. Privilege escalation vs. Admin rule</h3>
+                </div>
+                <p class="probe-desc">Compare an authorized Admin action (0 false alerts) against an unauthorized actor invoking elevated actions (PRIV_ESC_001).</p>
+                <form id="priv-event-form" class="form-grid">
+                  <div>
+                    <label for="priv-actor">Actor identity</label>
+                    <input id="priv-actor" type="text" value="Billing" required>
+                  </div>
+                  <div>
+                    <label for="priv-action">Action token</label>
+                    <select id="priv-action">
+                      <option value="grant_admin">grant_admin (elevated)</option>
+                      <option value="grant_role">grant_role (admin role)</option>
+                      <option value="READ">READ (routine)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="priv-src">Source service</label>
+                    <input id="priv-src" type="text" value="Auth" required>
+                  </div>
+                  <div>
+                    <label for="priv-dst">Target service</label>
+                    <input id="priv-dst" type="text" value="UserDB" required>
+                  </div>
+                  <div class="span-full btn-group">
+                    <button type="submit" class="btn btn-primary btn-sm">Submit event</button>
+                    <button type="button" id="btn-priv-admin-preset" class="btn btn-sm">Load Admin benign preset</button>
+                  </div>
+                </form>
+                <pre id="out-probe-priv" class="probe-output" hidden></pre>
+              </div>
+
+              <div class="probe-block">
+                <div class="probe-head">
+                  <h3>3. Clock-skew reorder buffer (&plusmn;5s)</h3>
+                  <button type="button" id="btn-probe-skew" class="btn btn-primary btn-sm">Test out-of-order skew</button>
+                </div>
+                <p class="probe-desc">Feeds unordered timestamps (+1.2s then +0.1s) inside the 5s tolerance window, verifies zero premature triggers, and flushes with ordering_uncertain=true.</p>
+                <pre id="out-probe-skew" class="probe-output" hidden></pre>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <!-- PANEL 4: TAMPER-EVIDENT AUDIT LEDGER -->
+      <div id="panel-ledger" role="tabpanel" aria-labelledby="tab-ledger" hidden="until-found">
+        <div class="panel-inner">
+          <div class="callout" id="ledger-checkpoint-callout">
+            <strong>Periodic ML-DSA-65 checkpoint design:</strong> Every record links via SHA-256 over canonical JSON (<span class="mono">prev_hash || entry_hash</span>). Entries between checkpoint intervals carry <span class="mono">checkpoint_signature: null</span> and rely on forward linkage into the next signed <span class="mono">ML-DSA-65</span> anchor.
+          </div>
+
+          <section class="surface-card" aria-labelledby="ledger-table-heading">
+            <div class="card-head">
+              <div>
+                <h2 id="ledger-table-heading">Canonical hash-chained ledger</h2>
+                <p id="ledger-verify-summary" class="card-desc">Click any record row to inspect its SHA-256 link hashes, details payload, and checkpoint signature status.</p>
+              </div>
+              <div class="btn-group">
+                <select id="ledger-filter" aria-label="Filter audit entries" style="inline-size: auto; min-inline-size: 165px;">
+                  <option value="all">All entries</option>
+                  <option value="security">Security &amp; revocations</option>
+                  <option value="checkpoints">Checkpoints only</option>
+                </select>
+                <button type="button" id="btn-verify-ledger" class="btn btn-primary btn-sm">Verify chain integrity</button>
+              </div>
+            </div>
+
+            <div tabindex="0" role="region" aria-labelledby="ledger-table-heading" class="table-wrapper responsive-table">
+              <table>
+                <caption>Append-only SHA-256 hash-chained audit records</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Entry</th>
+                    <th scope="col">UTC Time</th>
+                    <th scope="col">Actor</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Target</th>
+                    <th scope="col">Entry Hash</th>
+                    <th scope="col">Checkpoint</th>
+                    <th scope="col">Details</th>
+                  </tr>
+                </thead>
+                <tbody id="ledger-tbody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
-
-    <section class="card" aria-labelledby="ledger-heading">
-      <h2 id="ledger-heading">Tamper-Evident Audit Ledger</h2>
-      <div tabindex="0" role="region" aria-labelledby="ledger-table-caption" class="table-wrapper">
-        <table>
-          <caption id="ledger-table-caption">Recent canonical SHA-256 chained audit records</caption>
-          <thead>
-            <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Actor</th>
-              <th scope="col">Action</th>
-              <th scope="col">Target</th>
-              <th scope="col">Entry Hash</th>
-              <th scope="col">Checkpoint</th>
-            </tr>
-          </thead>
-          <tbody id="ledger-tbody"></tbody>
-        </table>
-      </div>
-    </section>
   </main>
 
+  <!-- Native Modals -->
   <dialog id="revoke-dialog" aria-labelledby="revoke-dialog-title" closedby="any">
     <form method="dialog" id="revoke-form">
-      <h2 id="revoke-dialog-title">Confirm Emergency Key Revocation</h2>
-      <p id="revoke-dialog-body">Revoke credentials for the selected service node across all peers.</p>
-      <div class="field">
-        <label for="revoke-reason">Revocation Reason</label>
-        <input id="revoke-reason" name="reason" type="text" value="operator-triggered-containment" required>
+      <h1 id="revoke-dialog-title">Confirm emergency key revocation</h1>
+      <p id="revoke-dialog-body">Revoke active credentials for the selected node across all gateways.</p>
+      <div>
+        <label for="revoke-reason">Revocation reason</label>
+        <input id="revoke-reason" name="reason" type="text" value="operator-triggered-containment" required autofocus>
       </div>
       <div class="dialog-actions">
-        <button type="submit" value="cancel">Cancel</button>
-        <button type="submit" value="confirm" class="btn-danger">Revoke Keypair</button>
+        <button type="submit" value="cancel" class="btn">Cancel</button>
+        <button type="submit" value="confirm" class="btn btn-danger">Revoke credentials</button>
       </div>
     </form>
   </dialog>
 
+  <dialog id="reenroll-dialog" aria-labelledby="reenroll-dialog-title" closedby="any">
+    <form method="dialog" id="reenroll-form">
+      <h1 id="reenroll-dialog-title">Re-enroll replacement service identity</h1>
+      <p id="reenroll-dialog-body">Provisions fresh ML-DSA-65, ML-KEM-768, and X25519 keys under a new node identifier while keeping the revoked identity permanently blocked.</p>
+      <div>
+        <label for="reenroll-new-id">Replacement node ID</label>
+        <input id="reenroll-new-id" name="new_node_id" type="text" required autofocus>
+      </div>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" class="btn">Cancel</button>
+        <button type="submit" value="confirm" class="btn btn-primary">Provision replacement</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="entry-dialog" aria-labelledby="entry-dialog-title" closedby="any">
+    <h1 id="entry-dialog-title">Audit record inspection</h1>
+    <p id="entry-dialog-note"></p>
+    <pre id="entry-dialog-json" class="probe-output" style="max-block-size: 320px;"></pre>
+    <form method="dialog" class="dialog-actions">
+      <button type="submit" value="close" class="btn btn-primary" autofocus>Close</button>
+    </form>
+  </dialog>
+
   <footer>
-    Q-Vault Sentinel &mdash; NIST FIPS 203 (ML-KEM-768) &amp; FIPS 204 (ML-DSA-65) Control Plane
+    <span>Q-Vault Sentinel Control Plane &mdash; NIST FIPS 203 (ML-KEM-768), NIST FIPS 204 (ML-DSA-65), X25519, AES-256-GCM</span>
+    <span id="footer-stats" class="mono"></span>
   </footer>
 
   <script>
-    const statusBannerText = document.querySelector("#status-banner span:first-child");
+    const NODE_COORDS = {
+      WebPortal: { x: 110, y: 120, tier: "Edge" },
+      Admin: { x: 110, y: 270, tier: "Admin" },
+      Auth: { x: 365, y: 90, tier: "Identity" },
+      FileGateway: { x: 365, y: 210, tier: "Gateway" },
+      Billing: { x: 365, y: 325, tier: "Service" },
+      UserDB: { x: 635, y: 90, tier: "Data" },
+      VaultDB: { x: 635, y: 210, tier: "Data" },
+      PayrollDB: { x: 635, y: 325, tier: "Data" }
+    };
+
+    const statusBanner = document.getElementById("status-banner");
+    const statusBannerMsg = document.getElementById("status-banner-msg");
     const chainHeadEl = document.getElementById("chain-head");
     const revokeDialog = document.getElementById("revoke-dialog");
-    const revokeBody = document.getElementById("revoke-dialog-body");
-    const revokeReasonInput = document.getElementById("revoke-reason");
-    let pendingRevokeNode = null;
+    const reenrollDialog = document.getElementById("reenroll-dialog");
+    const entryDialog = document.getElementById("entry-dialog");
 
-    function announce(msg) {
-      statusBannerText.textContent = msg;
+    let latestSnapshot = null;
+    let selectedNodeId = "Auth";
+    let pendingRevokeNode = null;
+    let pendingReenrollPrev = null;
+
+    /* Progressive light-dismiss fallback where dialog[closedby] is unavailable */
+    if (!("closedBy" in HTMLDialogElement.prototype)) {
+      const outside = (ev, dlg) => {
+        const r = dlg.getBoundingClientRect();
+        return ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom;
+      };
+      for (const dlg of document.querySelectorAll('dialog[closedby="any"]')) {
+        let pressedOutside = false;
+        dlg.addEventListener("pointerdown", (e) => { pressedOutside = outside(e, dlg); });
+        dlg.addEventListener("pointerup", (e) => {
+          if (pressedOutside && outside(e, dlg)) {
+            dlg.returnValue = "";
+            dlg.close();
+          }
+        });
+      }
     }
 
-    function createCell(text, className) {
+    function setStatus(msg, tone = "neutral") {
+      statusBanner.dataset.tone = tone;
+      statusBannerMsg.textContent = msg;
+    }
+
+    function showPre(elId, payload) {
+      const el = document.getElementById(elId);
+      el.hidden = false;
+      el.textContent = typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
+    }
+
+    function createCell(text, label, extraClass = "") {
       const td = document.createElement("td");
+      if (label) td.setAttribute("data-label", label);
+      if (extraClass) td.className = extraClass;
       td.textContent = text;
-      if (className) td.className = className;
       return td;
+    }
+
+    function makeBadge(text, variant, iconChar = "") {
+      const span = document.createElement("span");
+      span.className = `badge badge-${variant}`;
+      if (iconChar) {
+        const icon = document.createElement("span");
+        icon.setAttribute("aria-hidden", "true");
+        icon.textContent = iconChar;
+        span.appendChild(icon);
+      }
+      const label = document.createElement("span");
+      label.textContent = text;
+      span.appendChild(label);
+      return span;
+    }
+
+    function formatUtc(ts) {
+      if (!ts) return "—";
+      const d = new Date(Number(ts) * 1000);
+      return d.toISOString().replace("T", " ").slice(0, 19);
     }
 
     async function apiCall(path, method = "GET", body = null) {
       const opts = { method, headers: { "Content-Type": "application/json" } };
       if (body !== null) opts.body = JSON.stringify(body);
       const res = await fetch(path, opts);
-      const data = await res.json();
+      let data = {};
+      try {
+        data = await res.json();
+      } catch (_) {
+        data = { detail: `HTTP ${res.status}` };
+      }
       if (!res.ok) {
-        throw new Error(data.detail || "Request failed");
+        throw new Error(data.detail || `Request failed (${res.status})`);
       }
       return data;
     }
 
-    function populateSelects(nodes) {
+    /* Tabs with selection-follows-focus and keyboard navigation fallback */
+    const tabs = Array.from(document.querySelectorAll('#main-tablist [role="tab"]'));
+    const panels = Array.from(document.querySelectorAll('.panels-host > [role="tabpanel"]'));
+
+    function activateTab(selectedTab, focusTab = false) {
+      for (const t of tabs) {
+        const isSel = t === selectedTab;
+        t.setAttribute("aria-selected", String(isSel));
+        t.toggleAttribute("focusgroupstart", isSel);
+        const panel = document.getElementById(t.dataset.panel);
+        if (isSel) {
+          panel.removeAttribute("hidden");
+          panel.setAttribute("tabindex", "0");
+        } else {
+          panel.setAttribute("hidden", "until-found");
+          panel.removeAttribute("tabindex");
+        }
+      }
+      selectedTab.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (focusTab) selectedTab.focus();
+    }
+
+    for (const tab of tabs) {
+      tab.addEventListener("click", () => activateTab(tab));
+      tab.addEventListener("keydown", (e) => {
+        const idx = tabs.indexOf(tab);
+        let next = null;
+        if (e.key === "ArrowRight") next = tabs[(idx + 1) % tabs.length];
+        else if (e.key === "ArrowLeft") next = tabs[(idx - 1 + tabs.length) % tabs.length];
+        else if (e.key === "Home") next = tabs[0];
+        else if (e.key === "End") next = tabs[tabs.length - 1];
+        if (next) {
+          e.preventDefault();
+          activateTab(next, true);
+        }
+      });
+    }
+
+    for (const panel of panels) {
+      panel.addEventListener("beforematch", () => {
+        const owner = tabs.find((t) => t.dataset.panel === panel.id);
+        if (owner) activateTab(owner);
+      });
+    }
+
+    function openRevokeDialog(nodeId) {
+      pendingRevokeNode = nodeId;
+      document.getElementById("revoke-dialog-body").textContent =
+        `Revoke credentials for "${nodeId}" across all active service gateways immediately?`;
+      revokeDialog.showModal();
+    }
+
+    function openReenrollDialog(prevNodeId) {
+      pendingReenrollPrev = prevNodeId;
+      document.getElementById("reenroll-dialog-body").textContent =
+        `Provision replacement keys while keeping "${prevNodeId}" permanently revoked.`;
+      document.getElementById("reenroll-new-id").value = `${prevNodeId}_v2`;
+      reenrollDialog.showModal();
+    }
+
+    function openEntryDialog(entry) {
+      document.getElementById("entry-dialog-title").textContent =
+        `Audit Record #${entry.entry_id} (${entry.action})`;
+      if (entry.is_checkpoint && entry.checkpoint_signature) {
+        document.getElementById("entry-dialog-note").textContent =
+          "Signed ML-DSA-65 checkpoint anchor over entry_hash under CTX_LOG (qvault-log-v1).";
+      } else {
+        document.getElementById("entry-dialog-note").textContent =
+          `Intermediate hash-chained record: checkpoint_signature is null between checkpoints (checkpoint_interval=${latestSnapshot?.checkpoint_interval || 100}). Integrity chains forward to the next ML-DSA-65 checkpoint.`;
+      }
+      document.getElementById("entry-dialog-json").textContent = JSON.stringify(entry, null, 2);
+      entryDialog.showModal();
+    }
+
+    function renderTopology(snap) {
+      const svg = document.getElementById("topology-svg");
+      const ns = "http://www.w3.org/2000/svg";
+      svg.replaceChildren();
+
+      const defs = document.createElementNS(ns, "defs");
+      const mkMarker = (id, color) => {
+        const marker = document.createElementNS(ns, "marker");
+        marker.setAttribute("id", id);
+        marker.setAttribute("viewBox", "0 0 10 10");
+        marker.setAttribute("refX", "9");
+        marker.setAttribute("refY", "5");
+        marker.setAttribute("markerWidth", "6");
+        marker.setAttribute("markerHeight", "6");
+        marker.setAttribute("orient", "auto-start-reverse");
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute("d", "M 0 1.5 L 10 5 L 0 8.5 z");
+        path.setAttribute("fill", color);
+        marker.appendChild(path);
+        return marker;
+      };
+      defs.appendChild(mkMarker("arrow-allowed", "#3c6ba3"));
+      defs.appendChild(mkMarker("arrow-violated", "#f26368"));
+      svg.appendChild(defs);
+
+      const nodeMap = {};
+      let extraIndex = 0;
+      for (const n of snap.nodes) {
+        if (NODE_COORDS[n.node_id]) {
+          nodeMap[n.node_id] = { ...NODE_COORDS[n.node_id], node: n };
+        } else {
+          nodeMap[n.node_id] = { x: 140 + (extraIndex * 160), y: 40, tier: "Re-enrolled", node: n };
+          extraIndex += 1;
+        }
+      }
+
+      const drawEdge = (srcId, dstId, isViolated) => {
+        const a = nodeMap[srcId];
+        const b = nodeMap[dstId];
+        if (!a || !b || srcId === dstId) return;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const tx = Math.abs(dx) > 0.001 ? 66 / Math.abs(dx) : Infinity;
+        const ty = Math.abs(dy) > 0.001 ? 29 / Math.abs(dy) : Infinity;
+        const t = Math.min(0.42, tx, ty);
+        const x1 = a.x + dx * t;
+        const y1 = a.y + dy * t;
+        const x2 = b.x - dx * t;
+        const y2 = b.y - dy * t;
+
+        const line = document.createElementNS(ns, "line");
+        line.setAttribute("x1", String(x1));
+        line.setAttribute("y1", String(y1));
+        line.setAttribute("x2", String(x2));
+        line.setAttribute("y2", String(y2));
+        if (isViolated) {
+          line.setAttribute("stroke", "#f26368");
+          line.setAttribute("stroke-width", "2.2");
+          line.setAttribute("stroke-dasharray", "6 4");
+          line.setAttribute("marker-end", "url(#arrow-violated)");
+        } else {
+          line.setAttribute("stroke", "#243b5c");
+          line.setAttribute("stroke-width", "1.4");
+          line.setAttribute("marker-end", "url(#arrow-allowed)");
+        }
+        svg.appendChild(line);
+      };
+
+      for (const [src, dst] of snap.service_graph.allowed_paths) {
+        drawEdge(src, dst, false);
+      }
+
+      const violatedPairs = new Set();
+      for (const al of snap.alerts) {
+        if (al.violated_path) {
+          for (const seg of al.violated_path.split(",")) {
+            const parts = seg.trim().split("->");
+            if (parts.length === 2) violatedPairs.add(`${parts[0].trim()}->${parts[1].trim()}`);
+          }
+        }
+      }
+      for (const pair of violatedPairs) {
+        const [src, dst] = pair.split("->");
+        drawEdge(src, dst, true);
+      }
+
+      for (const [id, info] of Object.entries(nodeMap)) {
+        const g = document.createElementNS(ns, "g");
+        g.classList.add("graph-node");
+        g.setAttribute("tabindex", "0");
+        g.setAttribute("role", "button");
+        g.setAttribute("aria-label", `${id}, ${info.node.is_revoked ? "Revoked" : "Active"}`);
+        g.dataset.selected = String(id === selectedNodeId);
+        g.dataset.revoked = String(info.node.is_revoked);
+
+        const rect = document.createElementNS(ns, "rect");
+        rect.setAttribute("x", String(info.x - 62));
+        rect.setAttribute("y", String(info.y - 25));
+        rect.setAttribute("width", "124");
+        rect.setAttribute("height", "50");
+        rect.setAttribute("rx", "8");
+        g.appendChild(rect);
+
+        const title = document.createElementNS(ns, "text");
+        title.setAttribute("x", String(info.x));
+        title.setAttribute("y", String(info.y - 3));
+        title.setAttribute("text-anchor", "middle");
+        title.textContent = id;
+        g.appendChild(title);
+
+        const sub = document.createElementNS(ns, "text");
+        sub.setAttribute("x", String(info.x));
+        sub.setAttribute("y", String(info.y + 14));
+        sub.setAttribute("text-anchor", "middle");
+        sub.classList.add("node-sub");
+        sub.textContent = info.node.is_revoked ? "REVOKED" : `${info.tier} / E${info.node.key_epoch}`;
+        g.appendChild(sub);
+
+        const selectHandler = () => {
+          selectedNodeId = id;
+          renderTopology(latestSnapshot);
+          renderInspector(latestSnapshot);
+        };
+        g.addEventListener("click", selectHandler);
+        g.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            selectHandler();
+          }
+        });
+        svg.appendChild(g);
+      }
+    }
+
+    function renderInspector(snap) {
+      const node = snap.nodes.find((n) => n.node_id === selectedNodeId) || snap.nodes[0];
+      if (!node) return;
+      selectedNodeId = node.node_id;
+
+      document.getElementById("inspector-subtitle").textContent =
+        `Registered ${formatUtc(node.registered_at)} UTC`;
+      const badgeEl = document.getElementById("inspector-badge");
+      badgeEl.className = node.is_revoked ? "badge badge-danger" : "badge badge-ok";
+      badgeEl.textContent = node.is_revoked ? "Revoked" : "Active";
+
+      const kv = document.getElementById("inspector-kv");
+      kv.replaceChildren();
+      const rows = [
+        ["Node identity", node.node_id, false],
+        ["Provisioned epoch", String(node.key_epoch), false],
+        ["ML-DSA-65 fingerprint", node.signing_fp, true],
+        ["ML-KEM-768 fingerprint", node.kem_fp, true],
+      ];
+      if (node.is_revoked && node.revoked_at) {
+        rows.push(["Revoked at (UTC)", formatUtc(node.revoked_at), false]);
+      }
+      for (const [k, v, isMono] of rows) {
+        const div = document.createElement("div");
+        div.className = "kv-row";
+        const dt = document.createElement("dt");
+        dt.textContent = k;
+        const dd = document.createElement("dd");
+        dd.textContent = v;
+        if (isMono) dd.className = "mono";
+        div.append(dt, dd);
+        kv.appendChild(div);
+      }
+
+      const hopsEl = document.getElementById("inspector-hops");
+      hopsEl.replaceChildren();
+      const history = (snap.service_graph.actor_access_history[node.node_id] || []).slice(-4);
+      if (history.length === 0) {
+        const li = document.createElement("li");
+        li.textContent = "No transitions recorded yet.";
+        hopsEl.appendChild(li);
+      } else {
+        for (const h of history) {
+          const li = document.createElement("li");
+          li.className = "mono";
+          li.textContent = `${h.source} -> ${h.target}`;
+          hopsEl.appendChild(li);
+        }
+      }
+
+      const actionsEl = document.getElementById("inspector-actions");
+      actionsEl.replaceChildren();
+      if (!node.is_revoked) {
+        const revBtn = document.createElement("button");
+        revBtn.type = "button";
+        revBtn.className = "btn btn-danger btn-sm";
+        revBtn.textContent = "Revoke credentials";
+        revBtn.addEventListener("click", () => openRevokeDialog(node.node_id));
+        actionsEl.appendChild(revBtn);
+      } else {
+        const reenBtn = document.createElement("button");
+        reenBtn.type = "button";
+        reenBtn.className = "btn btn-primary btn-sm";
+        reenBtn.textContent = "Re-enroll replacement";
+        reenBtn.addEventListener("click", () => openReenrollDialog(node.node_id));
+        actionsEl.appendChild(reenBtn);
+      }
+    }
+
+    function populateTransferSelects(nodes) {
       const srcSel = document.getElementById("src-node");
       const dstSel = document.getElementById("dst-node");
       const prevSrc = srcSel.value;
@@ -564,44 +1823,80 @@
       dstSel.replaceChildren();
 
       for (const n of nodes) {
-        const opt1 = document.createElement("option");
-        opt1.value = n.node_id;
-        opt1.textContent = n.is_revoked ? `${n.node_id} (REVOKED)` : n.node_id;
-        srcSel.appendChild(opt1);
-
-        const opt2 = document.createElement("option");
-        opt2.value = n.node_id;
-        opt2.textContent = n.is_revoked ? `${n.node_id} (REVOKED)` : n.node_id;
-        dstSel.appendChild(opt2);
+        const label = n.is_revoked ? `${n.node_id} (Revoked)` : n.node_id;
+        for (const sel of [srcSel, dstSel]) {
+          const opt = document.createElement("option");
+          opt.value = n.node_id;
+          opt.textContent = label;
+          sel.appendChild(opt);
+        }
       }
-
-      if (prevSrc) srcSel.value = prevSrc;
-      if (prevDst) dstSel.value = prevDst;
+      if (prevSrc && nodes.some((n) => n.node_id === prevSrc)) srcSel.value = prevSrc;
+      if (prevDst && nodes.some((n) => n.node_id === prevDst)) dstSel.value = prevDst;
       else if (nodes.length > 1) dstSel.value = nodes[1].node_id;
     }
 
-    async function refreshStatus() {
-      const snap = await apiCall("/api/v1/status");
-      const activeCount = snap.nodes.filter((n) => !n.is_revoked).length;
-      const revokedCount = snap.nodes.filter((n) => n.is_revoked).length;
+    function renderLifecycle(snap) {
+      const es = snap.epoch_status || {};
+      const epochKv = document.getElementById("epoch-kv");
+      epochKv.replaceChildren();
+      const items = [
+        ["Current epoch", String(snap.current_epoch)],
+        ["Prior epoch", es.prior_epoch === null || es.prior_epoch === undefined ? "None (initial epoch)" : String(es.prior_epoch)],
+        ["Prior epoch within grace", es.prior_epoch_valid === null || es.prior_epoch_valid === undefined ? "N/A" : String(es.prior_epoch_valid)],
+        ["Configured grace window", `${snap.grace_period_seconds}s`],
+        ["Revocation epoch", String(snap.revocation_epoch)],
+      ];
+      for (const [k, v] of items) {
+        const div = document.createElement("div");
+        div.className = "kv-row";
+        const dt = document.createElement("dt");
+        dt.textContent = k;
+        const dd = document.createElement("dd");
+        dd.textContent = v;
+        div.append(dt, dd);
+        epochKv.appendChild(div);
+      }
 
-      document.getElementById("metric-epoch").textContent = snap.current_epoch;
-      document.getElementById("metric-active-nodes").textContent = activeCount;
-      document.getElementById("metric-revoked-nodes").textContent = revokedCount;
-      document.getElementById("metric-alerts").textContent = snap.metrics.total_alerts;
-      document.getElementById("metric-autorevoke").textContent = snap.metrics.auto_revocations;
-      document.getElementById("metric-entries").textContent = snap.ledger_summary.total_entries;
-      chainHeadEl.textContent = `Chain Head: ${snap.ledger_summary.current_chain_head.slice(0, 16)}...`;
-
-      populateSelects(snap.nodes);
-
-      const graphList = document.getElementById("graph-edges");
-      graphList.replaceChildren();
-      for (const [src, dst] of snap.service_graph.allowed_paths) {
-        const li = document.createElement("li");
-        li.className = "mono";
-        li.textContent = `${src} -> ${dst}`;
-        graphList.appendChild(li);
+      const bTbody = document.getElementById("backups-tbody");
+      bTbody.replaceChildren();
+      const backups = snap.recent_backups || [];
+      if (backups.length === 0) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 3;
+        td.textContent = "No .qvbak backups found in backup directory. Click Create backup to export.";
+        tr.appendChild(td);
+        bTbody.appendChild(tr);
+      } else {
+        for (const b of backups) {
+          const tr = document.createElement("tr");
+          const th = document.createElement("th");
+          th.scope = "row";
+          th.className = "mono";
+          th.textContent = b.name;
+          tr.appendChild(th);
+          tr.appendChild(createCell(`${b.size} bytes`, "Size", "mono"));
+          const actTd = document.createElement("td");
+          actTd.setAttribute("data-label", "Action");
+          const restoreBtn = document.createElement("button");
+          restoreBtn.type = "button";
+          restoreBtn.className = "btn btn-sm";
+          restoreBtn.textContent = "Restore & verify";
+          restoreBtn.addEventListener("click", async () => {
+            try {
+              const res = await apiCall("/api/v1/authority/restore", "POST", { backup_path: b.path });
+              showPre("backup-output", { restored: res.restored, path: b.path });
+              setStatus(`Verified and restored backup ${b.name}.`, "ok");
+              await refreshStatus();
+            } catch (err) {
+              setStatus(`Backup restore failed: ${err.message}`, "danger");
+            }
+          });
+          actTd.appendChild(restoreBtn);
+          tr.appendChild(actTd);
+          bTbody.appendChild(tr);
+        }
       }
 
       const nodesTbody = document.getElementById("nodes-tbody");
@@ -613,121 +1908,258 @@
         th.textContent = n.node_id;
         tr.appendChild(th);
 
-        const statusTd = document.createElement("td");
-        const badge = document.createElement("span");
-        badge.className = n.is_revoked ? "badge badge-revoked" : "badge badge-active";
-        badge.textContent = n.is_revoked ? "REVOKED" : "ACTIVE";
-        statusTd.appendChild(badge);
-        tr.appendChild(statusTd);
+        const stTd = document.createElement("td");
+        stTd.setAttribute("data-label", "Status");
+        stTd.appendChild(makeBadge(n.is_revoked ? "Revoked" : "Active", n.is_revoked ? "danger" : "ok", n.is_revoked ? "✕" : "✓"));
+        tr.appendChild(stTd);
 
-        tr.appendChild(createCell(n.signing_fp, "mono"));
-        tr.appendChild(createCell(String(n.key_epoch)));
+        tr.appendChild(createCell(String(n.key_epoch), "Epoch"));
+        tr.appendChild(createCell(n.signing_fp, "ML-DSA-65 FP", "mono"));
+        tr.appendChild(createCell(n.kem_fp, "ML-KEM-768 FP", "mono"));
 
-        const actionTd = document.createElement("td");
+        const actTd = document.createElement("td");
+        actTd.setAttribute("data-label", "Lifecycle action");
         if (!n.is_revoked) {
           const btn = document.createElement("button");
           btn.type = "button";
-          btn.className = "btn-danger";
-          btn.textContent = "Revoke";
-          btn.setAttribute("aria-label", `Revoke ${n.node_id}`);
-          btn.addEventListener("click", () => {
-            pendingRevokeNode = n.node_id;
-            revokeBody.textContent = `Revoke active keys for "${n.node_id}" across all service nodes?`;
-            revokeDialog.showModal();
-          });
-          actionTd.appendChild(btn);
+          btn.className = "btn btn-danger btn-sm";
+          btn.textContent = "Revoke credentials";
+          btn.addEventListener("click", () => openRevokeDialog(n.node_id));
+          actTd.appendChild(btn);
         } else {
-          actionTd.textContent = "Blocked";
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn btn-primary btn-sm";
+          btn.textContent = "Re-enroll device";
+          btn.addEventListener("click", () => openReenrollDialog(n.node_id));
+          actTd.appendChild(btn);
         }
-        tr.appendChild(actionTd);
+        tr.appendChild(actTd);
         nodesTbody.appendChild(tr);
       }
+    }
 
-      const alertsTbody = document.getElementById("alerts-tbody");
-      alertsTbody.replaceChildren();
+    function renderAlertsAndMetrics(snap) {
+      const tbody = document.getElementById("alerts-tbody");
+      tbody.replaceChildren();
+      document.getElementById("overview-alerts-count").textContent = `${snap.alerts.length} recorded`;
+
       if (snap.alerts.length === 0) {
         const tr = document.createElement("tr");
-        const td = createCell("No security alerts detected.");
-        td.colSpan = 4;
+        const td = document.createElement("td");
+        td.colSpan = 5;
+        td.textContent = "No security alerts recorded. Run checks in Security Lab or trigger a lateral-movement test.";
         tr.appendChild(td);
-        alertsTbody.appendChild(tr);
+        tbody.appendChild(tr);
       } else {
-        for (const a of snap.alerts) {
+        for (const a of snap.alerts.slice(0, 20)) {
           const tr = document.createElement("tr");
           const sevTd = document.createElement("td");
-          const badge = document.createElement("span");
-          badge.className = a.severity === "critical" ? "badge badge-critical" : "badge badge-high";
-          badge.textContent = a.severity.toUpperCase();
-          sevTd.appendChild(badge);
+          sevTd.setAttribute("data-label", "Severity");
+          const variant = a.severity === "critical" ? "danger" : "warn";
+          sevTd.appendChild(makeBadge(a.severity.toUpperCase(), variant, "!"));
           tr.appendChild(sevTd);
-          tr.appendChild(createCell(a.violated_rule, "mono"));
-          tr.appendChild(createCell(a.actor));
-          tr.appendChild(createCell(a.description));
-          alertsTbody.appendChild(tr);
+
+          tr.appendChild(createCell(a.violated_rule, "Rule", "mono"));
+          tr.appendChild(createCell(a.actor, "Actor"));
+          const pathMeta = [a.violated_path || (a.services_involved || []).join(" -> "), a.ordering_uncertain ? "skew-uncertain" : ""]
+            .filter(Boolean)
+            .join(" | ");
+          tr.appendChild(createCell(pathMeta || "—", "Path & timing", "mono td-wrap"));
+          tr.appendChild(createCell(a.description, "Description", "alert-row-desc"));
+          tbody.appendChild(tr);
         }
       }
 
-      const ledgerTbody = document.getElementById("ledger-tbody");
-      ledgerTbody.replaceChildren();
-      for (const e of snap.recent_entries) {
+      const detKv = document.getElementById("detector-metrics-kv");
+      detKv.replaceChildren();
+      const m = snap.metrics || {};
+      const detRows = [
+        ["Total alerts emitted", String(m.total_alerts ?? 0)],
+        ["Critical containment alerts", String(m.critical_alerts ?? 0)],
+        ["Automated revocations triggered", String(m.auto_revocations ?? 0)],
+        ["Clock-skew buffer window", `±${snap.clock_tolerance_seconds}s`],
+        ["Batch F1 score (last batch eval)", m.f1_score ? String(m.f1_score) : "Run CLI benchmark / batch eval"],
+        ["False positives per 1,000 events", String(m.fp_per_1000_events ?? 0)],
+      ];
+      for (const [k, v] of detRows) {
+        const div = document.createElement("div");
+        div.className = "kv-row";
+        const dt = document.createElement("dt");
+        dt.textContent = k;
+        const dd = document.createElement("dd");
+        dd.textContent = v;
+        dd.className = "mono";
+        div.append(dt, dd);
+        detKv.appendChild(div);
+      }
+    }
+
+    function renderLedger(snap) {
+      const interval = snap.checkpoint_interval || 100;
+      const total = snap.ledger_summary.total_entries;
+      const nextCp = Math.floor(total / interval) * interval + interval;
+      const callout = document.getElementById("ledger-checkpoint-callout");
+      callout.replaceChildren();
+      const strong = document.createElement("strong");
+      strong.textContent = "Periodic ML-DSA-65 checkpoint cadence: ";
+      callout.appendChild(strong);
+      callout.appendChild(
+        document.createTextNode(
+          `Every ${interval} records emits a signed ML-DSA-65 anchor (next checkpoint at entry #${nextCp}). Intermediate entries set checkpoint_signature to null and chain forward via SHA-256.`
+        )
+      );
+
+      const filter = document.getElementById("ledger-filter").value;
+      let entries = snap.recent_entries || [];
+      if (filter === "checkpoints") {
+        entries = entries.filter((e) => e.is_checkpoint);
+      } else if (filter === "security") {
+        entries = entries.filter((e) => /REVOKE|REPLAY|TAMPER|HIJACK|LATERAL|ALERT|ROTATE|PRIV|CLOCK|SKEW/i.test(e.action));
+      }
+
+      const tbody = document.getElementById("ledger-tbody");
+      tbody.replaceChildren();
+      if (entries.length === 0) {
         const tr = document.createElement("tr");
-        tr.appendChild(createCell(String(e.entry_id)));
-        tr.appendChild(createCell(e.actor));
-        tr.appendChild(createCell(e.action, "mono"));
-        tr.appendChild(createCell(e.target));
-        tr.appendChild(createCell(`${e.entry_hash.slice(0, 16)}...`, "mono"));
-        tr.appendChild(createCell(e.is_checkpoint ? "ML-DSA-65" : "—"));
-        ledgerTbody.appendChild(tr);
+        const td = document.createElement("td");
+        td.colSpan = 8;
+        td.textContent = "No audit records match the active filter.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        return;
+      }
+
+      for (const e of entries) {
+        const tr = document.createElement("tr");
+        const th = document.createElement("th");
+        th.scope = "row";
+        th.className = "mono";
+        th.textContent = `#${e.entry_id}`;
+        tr.appendChild(th);
+
+        tr.appendChild(createCell(formatUtc(e.timestamp), "UTC Time", "mono"));
+        tr.appendChild(createCell(e.actor, "Actor"));
+        tr.appendChild(createCell(e.action, "Action", "mono"));
+        tr.appendChild(createCell(e.target, "Target", "td-wrap"));
+        tr.appendChild(createCell(`${e.entry_hash.slice(0, 14)}...`, "Entry Hash", "mono"));
+
+        const cpTd = document.createElement("td");
+        cpTd.setAttribute("data-label", "Checkpoint");
+        if (e.is_checkpoint && e.checkpoint_signature) {
+          cpTd.appendChild(makeBadge("ML-DSA-65", "ok", "✓"));
+        } else {
+          cpTd.appendChild(makeBadge("Chained", "neutral"));
+        }
+        tr.appendChild(cpTd);
+
+        const insTd = document.createElement("td");
+        insTd.setAttribute("data-label", "Details");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn btn-sm";
+        btn.textContent = "Inspect";
+        btn.addEventListener("click", () => openEntryDialog(e));
+        insTd.appendChild(btn);
+        tr.appendChild(insTd);
+
+        tbody.appendChild(tr);
+      }
+    }
+
+    async function refreshStatus() {
+      const snap = await apiCall("/api/v1/status");
+      latestSnapshot = snap;
+
+      const activeCount = snap.nodes.filter((n) => !n.is_revoked).length;
+      const revokedCount = snap.nodes.filter((n) => n.is_revoked).length;
+
+      const hdrBadge = document.getElementById("header-health-badge");
+      hdrBadge.replaceChildren();
+      if (revokedCount > 0) {
+        hdrBadge.className = "badge badge-warn";
+        const ic = document.createElement("span");
+        ic.setAttribute("aria-hidden", "true");
+        ic.textContent = "!";
+        const tx = document.createElement("span");
+        tx.textContent = `${revokedCount} contained`;
+        hdrBadge.append(ic, tx);
+      } else {
+        hdrBadge.className = "badge badge-ok";
+        const ic = document.createElement("span");
+        ic.setAttribute("aria-hidden", "true");
+        ic.textContent = "●";
+        const tx = document.createElement("span");
+        tx.textContent = "Authority online";
+        hdrBadge.append(ic, tx);
+      }
+
+      document.getElementById("metric-epoch").textContent = String(snap.current_epoch);
+      document.getElementById("metric-epoch-sub").textContent = `${snap.grace_period_seconds}s grace window`;
+      document.getElementById("metric-nodes-ratio").textContent = `${activeCount} / ${snap.nodes.length}`;
+      document.getElementById("metric-nodes-sub").textContent = `${revokedCount} revoked`;
+      document.getElementById("metric-alerts").textContent = String(snap.metrics.total_alerts);
+      document.getElementById("metric-alerts-sub").textContent = `${snap.metrics.auto_revocations} auto-revoked`;
+      document.getElementById("metric-entries").textContent = String(snap.ledger_summary.total_entries);
+      const cpInt = snap.checkpoint_interval || 100;
+      const nextCp = Math.floor(snap.ledger_summary.total_entries / cpInt) * cpInt + cpInt;
+      document.getElementById("metric-checkpoint-sub").textContent = `Next ML-DSA-65 checkpoint #${nextCp}`;
+      chainHeadEl.textContent = `Head: ${snap.ledger_summary.current_chain_head.slice(0, 16)}...`;
+      document.getElementById("footer-stats").textContent = `Epoch ${snap.current_epoch} | Revocation Epoch ${snap.revocation_epoch}`;
+
+      populateTransferSelects(snap.nodes);
+      renderTopology(snap);
+      renderInspector(snap);
+      renderLifecycle(snap);
+      renderAlertsAndMetrics(snap);
+      renderLedger(snap);
+    }
+
+    async function triggerRotate() {
+      try {
+        const res = await apiCall("/api/v1/authority/rotate", "POST");
+        await refreshStatus();
+        setStatus(`Rotated to epoch ${res.epoch}; prior epoch valid inside ${latestSnapshot.grace_period_seconds}s grace window.`, "ok");
+      } catch (err) {
+        setStatus(`Epoch rotation failed: ${err.message}`, "danger");
+      }
+    }
+
+    async function triggerVerifyChain() {
+      try {
+        const res = await apiCall("/api/v1/ledger/verify");
+        setStatus(res.message, res.ok ? "ok" : "danger");
+      } catch (err) {
+        setStatus(`Ledger verification error: ${err.message}`, "danger");
+      }
+    }
+
+    async function triggerLateralScenario(outputId = null) {
+      try {
+        const res = await apiCall("/api/v1/scenarios/lateral-movement", "POST");
+        await refreshStatus();
+        if (outputId) showPre(outputId, res);
+        setStatus(`Lateral movement contained for ${res.actor} (revoked=${res.is_revoked}, ${res.alerts.length} alerts emitted).`, "warn");
+      } catch (err) {
+        setStatus(`Lateral movement test failed: ${err.message}`, "danger");
       }
     }
 
     document.getElementById("btn-refresh").addEventListener("click", async () => {
       try {
         await refreshStatus();
-        announce("Telemetry snapshot refreshed.");
+        setStatus("Control-plane telemetry refreshed.", "ok");
       } catch (err) {
-        announce(`Refresh failed: ${err.message}`);
+        setStatus(`Refresh failed: ${err.message}`, "danger");
       }
     });
 
-    document.getElementById("btn-rotate").addEventListener("click", async () => {
-      try {
-        const res = await apiCall("/api/v1/authority/rotate", "POST");
-        await refreshStatus();
-        announce(`Rotated to key epoch ${res.epoch} (grace window active).`);
-      } catch (err) {
-        announce(`Rotation failed: ${err.message}`);
-      }
-    });
-
-    document.getElementById("btn-verify-log").addEventListener("click", async () => {
-      try {
-        const res = await apiCall("/api/v1/ledger/verify");
-        announce(res.ok ? `Audit chain verified: ${res.message}` : `Integrity alert: ${res.message}`);
-      } catch (err) {
-        announce(`Verification failed: ${err.message}`);
-      }
-    });
-
-    document.getElementById("btn-backup").addEventListener("click", async () => {
-      try {
-        const res = await apiCall("/api/v1/authority/backup", "POST");
-        await refreshStatus();
-        announce(`Encrypted ML-DSA-65 signed backup saved (${res.size} bytes, sha256=${res.checksum.slice(0, 16)}...).`);
-      } catch (err) {
-        announce(`Backup failed: ${err.message}`);
-      }
-    });
-
-    document.getElementById("btn-simulate-attack").addEventListener("click", async () => {
-      try {
-        const res = await apiCall("/api/v1/scenarios/lateral-movement", "POST");
-        await refreshStatus();
-        announce(`Lateral-movement sequence detected for ${res.actor}; automated revocation status: ${res.is_revoked}.`);
-      } catch (err) {
-        announce(`Scenario failed: ${err.message}`);
-      }
-    });
+    document.getElementById("btn-rotate").addEventListener("click", triggerRotate);
+    document.getElementById("btn-rotate-lifecycle").addEventListener("click", triggerRotate);
+    document.getElementById("btn-verify-top").addEventListener("click", triggerVerifyChain);
+    document.getElementById("btn-verify-ledger").addEventListener("click", triggerVerifyChain);
+    document.getElementById("btn-lateral-overview").addEventListener("click", () => triggerLateralScenario());
+    document.getElementById("btn-probe-lateral").addEventListener("click", () => triggerLateralScenario("out-probe-lateral"));
 
     document.getElementById("transfer-form").addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -740,31 +2172,194 @@
           target_node: targetNode,
           payload_text: payloadText,
         });
+        showPre("transfer-output", res);
         await refreshStatus();
-        announce(`Encrypted transfer ${sourceNode} -> ${targetNode} verified (${res.bytes_delivered} bytes, ${res.delivery_ms} ms).`);
+        setStatus(`Encrypted transfer ${sourceNode} -> ${targetNode} delivered (${res.bytes_delivered} bytes in ${res.delivery_ms} ms).`, "ok");
       } catch (err) {
+        showPre("transfer-output", { blocked: true, reason: err.message });
         await refreshStatus();
-        announce(`Transfer blocked: ${err.message}`);
+        setStatus(`Transfer rejected: ${err.message}`, "danger");
       }
     });
 
+    document.getElementById("epoch-check-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const ep = Number(document.getElementById("check-epoch-num").value);
+      const off = Number(document.getElementById("check-epoch-offset").value);
+      try {
+        const res = await apiCall(`/api/v1/authority/epoch-check?epoch=${encodeURIComponent(ep)}&offset_seconds=${encodeURIComponent(off)}`);
+        showPre("epoch-output", res);
+        setStatus(`Epoch ${res.query_epoch} evaluated at +${res.offset_seconds}s: is_valid=${res.is_valid}.`, res.is_valid ? "ok" : "warn");
+      } catch (err) {
+        setStatus(`Epoch evaluation failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-check-post-cutoff").addEventListener("click", async () => {
+      const prior = Math.max(0, (latestSnapshot?.current_epoch ?? 0) - 1);
+      const afterCutoff = (latestSnapshot?.grace_period_seconds ?? 30) + 5;
+      document.getElementById("check-epoch-num").value = String(prior);
+      document.getElementById("check-epoch-offset").value = String(afterCutoff);
+      try {
+        const res = await apiCall(`/api/v1/authority/epoch-check?epoch=${prior}&offset_seconds=${afterCutoff}`);
+        showPre("epoch-output", res);
+        setStatus(`Evaluated prior epoch ${prior} at +${afterCutoff}s post-cutoff: is_valid=${res.is_valid}.`, res.is_valid ? "ok" : "warn");
+      } catch (err) {
+        setStatus(`Epoch check failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-create-backup").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/authority/backup", "POST");
+        showPre("backup-output", res);
+        await refreshStatus();
+        setStatus(`Signed backup written (${res.size} bytes).`, "ok");
+      } catch (err) {
+        setStatus(`Backup failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-probe-backup-quick").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/probes/backup-tamper", "POST");
+        showPre("backup-output", res);
+        await refreshStatus();
+        setStatus(`Backup tamper verification passed: intact_restored=${res.intact_restored}, corrupted_rejected=${res.corrupted_rejected}.`, "ok");
+      } catch (err) {
+        setStatus(`Backup probe failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-probe-replay").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/probes/replay", "POST", {});
+        showPre("out-probe-replay", res);
+        await refreshStatus();
+        setStatus(`Replay verification: initial=${res.first_delivery_bytes}B delivered, duplicate replay_blocked=${res.replay_blocked}.`, "ok");
+      } catch (err) {
+        showPre("out-probe-replay", { error: err.message });
+        setStatus(`Replay probe blocked: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-probe-aad").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/probes/aad-tamper", "POST", {});
+        showPre("out-probe-aad", res);
+        await refreshStatus();
+        setStatus(`AAD recipient substitution rejected with ${res.exception}.`, "ok");
+      } catch (err) {
+        setStatus(`AAD probe failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-probe-resumption").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/probes/resumption-hijack", "POST", {});
+        showPre("out-probe-resumption", res);
+        await refreshStatus();
+        setStatus(`Resumption check: hijack_blocked=${res.hijack_blocked}, valid_resumed=${res.valid_resumed}, replay_blocked=${res.ticket_replay_blocked}.`, "ok");
+      } catch (err) {
+        showPre("out-probe-resumption", { error: err.message });
+        setStatus(`Resumption probe failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("priv-event-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      try {
+        const res = await apiCall("/api/v1/detector/events", "POST", {
+          actor: document.getElementById("priv-actor").value.trim(),
+          action: document.getElementById("priv-action").value,
+          source_service: document.getElementById("priv-src").value.trim(),
+          target_service: document.getElementById("priv-dst").value.trim(),
+          flush_immediately: true,
+        });
+        showPre("out-probe-priv", res);
+        await refreshStatus();
+        setStatus(`Evaluated event: ${res.alerts.length} alert(s) triggered.`, res.alerts.length > 0 ? "warn" : "ok");
+      } catch (err) {
+        setStatus(`Event submission failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-priv-admin-preset").addEventListener("click", () => {
+      document.getElementById("priv-actor").value = "Admin";
+      document.getElementById("priv-action").value = "grant_role";
+      document.getElementById("priv-src").value = "Admin";
+      document.getElementById("priv-dst").value = "Auth";
+    });
+
+    document.getElementById("btn-probe-skew").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/probes/clock-skew", "POST");
+        showPre("out-probe-skew", res);
+        await refreshStatus();
+        setStatus(`Clock-skew buffer check: buffered_before_flush=${res.buffered_before_flush}, ordering_uncertain_flagged=${res.ordering_uncertain_flagged}.`, "ok");
+      } catch (err) {
+        setStatus(`Clock-skew probe failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("btn-flush-detector").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/detector/flush", "POST");
+        await refreshStatus();
+        setStatus(`Flushed skew reorder buffer: ${res.alerts.length} alert(s) emitted.`, res.alerts.length > 0 ? "warn" : "ok");
+      } catch (err) {
+        setStatus(`Flush failed: ${err.message}`, "danger");
+      }
+    });
+
+    document.getElementById("ledger-filter").addEventListener("change", () => {
+      if (latestSnapshot) renderLedger(latestSnapshot);
+    });
+
     revokeDialog.addEventListener("close", async () => {
-      if (revokeDialog.returnValue === "confirm" && pendingRevokeNode) {
+      const rv = revokeDialog.returnValue;
+      revokeDialog.returnValue = "";
+      if (rv === "confirm" && pendingRevokeNode) {
         try {
-          const res = await apiCall("/api/v1/authority/revoke", "POST", {
-            node_id: pendingRevokeNode,
-            reason: revokeReasonInput.value,
-          });
+          const reason = document.getElementById("revoke-reason").value.trim() || "operator-triggered";
+          const res = await apiCall("/api/v1/authority/revoke", "POST", { node_id: pendingRevokeNode, reason });
           await refreshStatus();
-          announce(`Revoked ${res.node_id} at revocation epoch ${res.revocation_epoch} (max propagation ${res.propagation.max_propagation_ms.toFixed(2)} ms).`);
+          setStatus(`Revoked ${res.node_id} at revocation epoch ${res.revocation_epoch} (max propagation ${res.propagation.max_propagation_ms.toFixed(2)} ms).`, "warn");
         } catch (err) {
-          announce(`Revocation failed: ${err.message}`);
+          setStatus(`Revocation failed: ${err.message}`, "danger");
         }
       }
       pendingRevokeNode = null;
     });
 
-    refreshStatus().catch((err) => announce(`Initial load failed: ${err.message}`));
+    reenrollDialog.addEventListener("close", async () => {
+      const rv = reenrollDialog.returnValue;
+      reenrollDialog.returnValue = "";
+      if (rv === "confirm" && pendingReenrollPrev) {
+        try {
+          const newId = document.getElementById("reenroll-new-id").value.trim();
+          const res = await apiCall("/api/v1/authority/re-enroll", "POST", {
+            previous_node_id: pendingReenrollPrev,
+            new_node_id: newId,
+          });
+          selectedNodeId = res.node_id;
+          await refreshStatus();
+          setStatus(`Provisioned replacement identity ${res.node_id} while keeping ${res.previous_node_id} revoked.`, "ok");
+        } catch (err) {
+          setStatus(`Re-enrollment failed: ${err.message}`, "danger");
+        }
+      }
+      pendingReenrollPrev = null;
+    });
+
+    entryDialog.addEventListener("close", () => {
+      entryDialog.returnValue = "";
+    });
+
+    refreshStatus()
+      .then(() => setStatus("Control plane connected. Monitoring active keys and audit telemetry.", "ok"))
+      .catch((err) => setStatus(`Initial load failed: ${err.message}`, "danger"));
+
     setInterval(() => refreshStatus().catch(() => {}), 5000);
   </script>
 </body>

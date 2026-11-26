@@ -173,3 +173,57 @@ def test_http_service_node_resumption_hijack_blocked(tmp_path):
     )
     assert replay_ticket_res.status_code == 403
     runtime.close()
+
+
+def test_security_probes_re_enroll_and_epoch_check(tmp_path):
+    client, runtime = _make_test_client(tmp_path)
+
+    aad = client.post("/api/v1/probes/aad-tamper", json={})
+    assert aad.status_code == 200
+    assert aad.json()["rejected"] is True
+    assert aad.json()["exception"] == "InvalidTag"
+
+    replay = client.post("/api/v1/probes/replay", json={})
+    assert replay.status_code == 200
+    assert replay.json()["replay_blocked"] is True
+
+    resum = client.post("/api/v1/probes/resumption-hijack", json={})
+    assert resum.status_code == 200
+    assert resum.json()["hijack_blocked"] is True
+    assert resum.json()["valid_resumed"] is True
+    assert resum.json()["ticket_replay_blocked"] is True
+
+    bak_probe = client.post("/api/v1/probes/backup-tamper")
+    assert bak_probe.status_code == 200
+    assert bak_probe.json()["intact_restored"] is True
+    assert bak_probe.json()["corrupted_rejected"] is True
+
+    skew = client.post("/api/v1/probes/clock-skew")
+    assert skew.status_code == 200
+    assert skew.json()["buffered_before_flush"] == 0
+    assert skew.json()["ordering_uncertain_flagged"] is True
+
+    rot = client.post("/api/v1/authority/rotate")
+    assert rot.status_code == 200
+    ep_in_grace = client.get("/api/v1/authority/epoch-check?epoch=0&offset_seconds=0")
+    assert ep_in_grace.status_code == 200
+    assert ep_in_grace.json()["is_valid"] is True
+    ep_after_cutoff = client.get("/api/v1/authority/epoch-check?epoch=0&offset_seconds=45")
+    assert ep_after_cutoff.status_code == 200
+    assert ep_after_cutoff.json()["is_valid"] is False
+
+    bak = client.post("/api/v1/authority/backup")
+    assert bak.status_code == 200
+    backups = client.get("/api/v1/authority/backups")
+    assert backups.status_code == 200
+    assert len(backups.json()["backups"]) >= 1
+
+    rev = client.post("/api/v1/authority/revoke", json={"node_id": "FileGateway", "reason": "rotation-test"})
+    assert rev.status_code == 200
+    re_enr = client.post(
+        "/api/v1/authority/re-enroll",
+        json={"previous_node_id": "FileGateway", "new_node_id": "FileGateway_v2"},
+    )
+    assert re_enr.status_code == 200
+    assert re_enr.json()["node_id"] == "FileGateway_v2"
+    runtime.close()

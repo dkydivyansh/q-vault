@@ -342,7 +342,14 @@ def watch(db_path: str, ledger_path: str):
 def serve(host: str, port: int, db_path: str | None, ledger_path: str | None):
     """Start the FastAPI control plane, protected service nodes, and web console."""
     cfg = load_config(db_path=db_path, ledger_path=ledger_path)
-    app = create_web_console_app(config=cfg)
+    try:
+        app = create_web_console_app(config=cfg)
+    except ValueError as exc:
+        console.print(
+            f"[red]Startup failed: {exc}[/red]\n"
+            f"[dim]Set matching QVAULT_MASTER_KEK or remove stale database at {cfg.db_path}.[/dim]"
+        )
+        raise SystemExit(1)
     console.print(
         Panel(
             f"[bold cyan]Q-Vault Sentinel Web Console & Control Plane[/bold cyan]\n"
