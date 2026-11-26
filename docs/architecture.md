@@ -139,7 +139,10 @@ Q-Vault Sentinel enforces four engineering constraints across the codebase:
 
 ## 6. Related Documentation
 
-* **[SDK Reference](sdk/overview.md)** — Core `src/sdk/` interfaces, cryptographic primitives, and lifecycle guarantees
-* **[Operations & Deployment Guide](operations.md)** — Environment setup, configuration, operator CLI, and Web Console usage (`src/app/`)
-* **[Verification & Benchmark Results](testing.md)** — Automated `tests/` suite, benchmark methodology, and observed performance metrics
+* **[SDK Overview](sdk/overview.md)** — Installation, `src/sdk/` import guide, domain-separation contexts, and end-to-end integration flow
+* **[SDK Cryptographic Engine API](sdk/cryptography.md)** — Identity generation, `ML-DSA-65` signing, `X25519 + ML-KEM-768` handshakes, and `AES-256-GCM` chunk envelopes
+* **[SDK Authority & Gateway API](sdk/authority-and-gateway.md)** — `KeyAuthority` lifecycle/WAL persistence, `NodeGateway` transport, anti-replay, and resumption tickets
+* **[SDK Ledger & Watchdog API](sdk/ledger-and-detector.md)** — `AuditLedger` canonical hash chain and `WatchdogDetector` deterministic detection & metrics
+* **[Operations, CLI & HTTP API](operations.md)** — Environment setup, configuration, operator CLI, REST API endpoints, and Web Console (`src/app/`)
+* **[Verification & Benchmark Results](testing.md)** — Automated `tests/` case catalog, isolation fixtures, benchmark API, and observed metrics
 * **[Threat Model & Limitations](threat-model.md)** — Adversary capabilities, trust boundaries, and explicit engineering limitations
