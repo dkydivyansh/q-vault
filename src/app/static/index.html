@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Q-Vault Sentinel | Post-Quantum Control Plane</title>
+  <style>
+    :root {
+      --bg: #0b111b;
+      --surface: #111927;
+      --surface-elevated: #172235;
+      --border: #28364d;
+      --text: #e6edf7;
+      --text-muted: #9db0ca;
+      --accent: #38bdf8;
+      --accent-strong: #0284c7;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --focus-ring: #fde047;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-block-size: 100dvb;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+
+    .skip-link {
+      position: absolute;
+      inset-inline-start: -9999px;
+      inset-block-start: 0.75rem;
+      z-index: 100;
+      padding: 0.5rem 1rem;
+      background: var(--accent-strong);
+      color: #ffffff;
+      border-radius: 0.375rem;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .skip-link:focus {
+      inset-inline-start: 0.75rem;
+    }
+
+    :where(a, button, input, select, [tabindex]):focus-visible {
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+
+    header {
+      border-block-end: 1px solid var(--border);
+      background: var(--surface);
+      padding-block: 1rem;
+      padding-inline: 1.5rem;
+    }
+
+    .header-inner {
+      max-inline-size: 1320px;
+      margin-inline: auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      letter-spacing: 0.01em;
+    }
+
+    .subtitle {
+      margin: 0.15rem 0 0;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    button {
+      min-block-size: 40px;
+      padding-block: 0.45rem;
+      padding-inline: 0.9rem;
+      border-radius: 0.45rem;
+      border: 1px solid var(--border);
+      background: var(--surface-elevated);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.875rem;
+      cursor: pointer;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+    }
+
+    .btn-primary {
+      background: var(--accent-strong);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .btn-danger {
+      background: #7f1d1d;
+      border-color: var(--danger);
+      color: #ffffff;
+    }
+
+    main {
+      max-inline-size: 1320px;
+      inline-size: 100%;
+      margin-inline: auto;
+      padding: 1.5rem;
+      display: grid;
+      gap: 1.25rem;
+      align-content: start;
+    }
+
+    .status-banner {
+      padding: 0.75rem 1rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      min-block-size: 2.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.6rem;
+      padding: 1rem;
+      min-inline-size: 0;
+    }
+
+    .card-label {
+      margin: 0;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .card-value {
+      margin: 0.35rem 0 0;
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .panels-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 1.25rem;
+    }
+
+    h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.05rem;
+    }
+
+    h3 {
+      margin: 0 0 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    .table-wrapper {
+      overflow: auto;
+      max-inline-size: 100%;
+      max-block-size: 360px;
+      scrollbar-gutter: stable;
+      container-type: inline-size;
+      border: 1px solid var(--border);
+      border-radius: 0.45rem;
+    }
+
+    table {
+      inline-size: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.875rem;
+    }
+
+    caption {
+      text-align: start;
+      padding: 0.55rem 0.75rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      background: var(--surface-elevated);
+      border-block-end: 1px solid var(--border);
+    }
+
+    thead th {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 1;
+      background: var(--surface-elevated);
+      color: var(--text-muted);
+      text-align: start;
+      padding: 0.55rem 0.75rem;
+      border-block-end: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    tbody th,
+    tbody td {
+      padding: 0.55rem 0.75rem;
+      border-block-end: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    tbody th {
+      text-align: start;
+      font-weight: 600;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+
+    .badge-active {
+      background: rgba(52, 211, 153, 0.16);
+      color: var(--success);
+      border: 1px solid var(--success);
+    }
+
+    .badge-revoked,
+    .badge-critical {
+      background: rgba(248, 113, 113, 0.16);
+      color: var(--danger);
+      border: 1px solid var(--danger);
+    }
+
+    .badge-high {
+      background: rgba(251, 191, 36, 0.16);
+      color: var(--warning);
+      border: 1px solid var(--warning);
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.8rem;
+    }
+
+    .graph-edges {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .graph-edges li {
+      padding: 0.3rem 0.65rem;
+      border-radius: 0.4rem;
+      background: var(--surface-elevated);
+      border: 1px solid var(--border);
+      font-size: 0.8rem;
+    }
+
+    .transfer-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      align-items: end;
+      margin-block-end: 1rem;
+    }
+
+    .field {
+      display: grid;
+      gap: 0.25rem;
+      flex: 1 1 160px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    input,
+    select {
+      min-block-size: 38px;
+      padding: 0.4rem 0.6rem;
+      border-radius: 0.4rem;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.875rem;
+    }
+
+    dialog {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 0.65rem;
+      padding: 1.25rem;
+      max-inline-size: 460px;
+      inline-size: calc(100% - 2rem);
+    }
+
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.7);
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+      margin-block-start: 1rem;
+    }
+
+    footer {
+      border-block-start: 1px solid var(--border);
+      padding: 0.9rem 1.5rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-align: center;
+    }
+
+    @container (width < 460px) {
+      table, thead, tbody, tr, th, td {
+        display: block;
+      }
+
+      thead {
+        display: none;
+      }
+
+      tbody tr {
+        border-block-end: 2px solid var(--border);
+        padding: 0.5rem;
+      }
+
+      tbody th,
+      tbody td {
+        border: 0;
+        padding: 0.25rem 0.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header>
+    <div class="header-inner">
+      <div>
+        <h1>Q-Vault Sentinel Control Plane</h1>
+        <p class="subtitle">Post-Quantum Identity Authority (ML-KEM-768 / ML-DSA-65 / X25519) &amp; Deterministic Watchdog</p>
+      </div>
+      <nav aria-label="Control Actions">
+        <button type="button" id="btn-refresh">Refresh</button>
+        <button type="button" id="btn-rotate" class="btn-primary">Rotate Epoch</button>
+        <button type="button" id="btn-verify-log">Verify Audit Chain</button>
+        <button type="button" id="btn-backup">Create Signed Backup</button>
+        <button type="button" id="btn-simulate-attack" class="btn-danger">Trigger Lateral-Movement Test</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content" tabindex="-1">
+    <div id="status-banner" class="status-banner" role="status" aria-live="polite">
+      <span>Control plane connected. Monitoring active keys and audit telemetry.</span>
+      <span id="chain-head" class="mono"></span>
+    </div>
+
+    <section aria-labelledby="metrics-heading">
+      <h2 id="metrics-heading">Operational Telemetry</h2>
+      <div class="metrics-grid">
+        <article class="card">
+          <p class="card-label">Current Key Epoch</p>
+          <p id="metric-epoch" class="card-value">0</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Active Service Nodes</p>
+          <p id="metric-active-nodes" class="card-value">0</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Revoked Nodes</p>
+          <p id="metric-revoked-nodes" class="card-value">0</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Total Alerts</p>
+          <p id="metric-alerts" class="card-value">0</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Auto-Revocations</p>
+          <p id="metric-autorevoke" class="card-value">0</p>
+        </article>
+        <article class="card">
+          <p class="card-label">Audit Ledger Entries</p>
+          <p id="metric-entries" class="card-value">0</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="transfer-heading">
+      <h2 id="transfer-heading">Quantum-Safe Service Transfer</h2>
+      <form id="transfer-form" class="transfer-form">
+        <div class="field">
+          <label for="src-node">Source Service</label>
+          <select id="src-node" name="source_node"></select>
+        </div>
+        <div class="field">
+          <label for="dst-node">Target Service</label>
+          <select id="dst-node" name="target_node"></select>
+        </div>
+        <div class="field">
+          <label for="payload-text">Message Payload</label>
+          <input id="payload-text" name="payload_text" type="text" value="Quarterly ledger settlement batch #104" required>
+        </div>
+        <button type="submit" class="btn-primary">Execute Hybrid PQC Transfer</button>
+      </form>
+
+      <h3>Authorized Service Graph Paths</h3>
+      <ul id="graph-edges" class="graph-edges"></ul>
+    </section>
+
+    <div class="panels-grid">
+      <section class="card" aria-labelledby="nodes-heading">
+        <h2 id="nodes-heading">Service Node Registry</h2>
+        <div tabindex="0" role="region" aria-labelledby="nodes-table-caption" class="table-wrapper">
+          <table>
+            <caption id="nodes-table-caption">Registered PQC identities and revocation status</caption>
+            <thead>
+              <tr>
+                <th scope="col">Node ID</th>
+                <th scope="col">Status</th>
+                <th scope="col">ML-DSA FP</th>
+                <th scope="col">Epoch</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody id="nodes-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="alerts-heading">
+        <h2 id="alerts-heading">Watchdog Alerts</h2>
+        <div tabindex="0" role="region" aria-labelledby="alerts-table-caption" class="table-wrapper">
+          <table>
+            <caption id="alerts-table-caption">Deterministic rule and service-graph containment alerts</caption>
+            <thead>
+              <tr>
+                <th scope="col">Severity</th>
+                <th scope="col">Rule</th>
+                <th scope="col">Actor</th>
+                <th scope="col">Description</th>
+              </tr>
+            </thead>
+            <tbody id="alerts-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <section class="card" aria-labelledby="ledger-heading">
+      <h2 id="ledger-heading">Tamper-Evident Audit Ledger</h2>
+      <div tabindex="0" role="region" aria-labelledby="ledger-table-caption" class="table-wrapper">
+        <table>
+          <caption id="ledger-table-caption">Recent canonical SHA-256 chained audit records</caption>
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Actor</th>
+              <th scope="col">Action</th>
+              <th scope="col">Target</th>
+              <th scope="col">Entry Hash</th>
+              <th scope="col">Checkpoint</th>
+            </tr>
+          </thead>
+          <tbody id="ledger-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="revoke-dialog" aria-labelledby="revoke-dialog-title" closedby="any">
+    <form method="dialog" id="revoke-form">
+      <h2 id="revoke-dialog-title">Confirm Emergency Key Revocation</h2>
+      <p id="revoke-dialog-body">Revoke credentials for the selected service node across all peers.</p>
+      <div class="field">
+        <label for="revoke-reason">Revocation Reason</label>
+        <input id="revoke-reason" name="reason" type="text" value="operator-triggered-containment" required>
+      </div>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel">Cancel</button>
+        <button type="submit" value="confirm" class="btn-danger">Revoke Keypair</button>
+      </div>
+    </form>
+  </dialog>
+
+  <footer>
+    Q-Vault Sentinel &mdash; NIST FIPS 203 (ML-KEM-768) &amp; FIPS 204 (ML-DSA-65) Control Plane
+  </footer>
+
+  <script>
+    const statusBannerText = document.querySelector("#status-banner span:first-child");
+    const chainHeadEl = document.getElementById("chain-head");
+    const revokeDialog = document.getElementById("revoke-dialog");
+    const revokeBody = document.getElementById("revoke-dialog-body");
+    const revokeReasonInput = document.getElementById("revoke-reason");
+    let pendingRevokeNode = null;
+
+    function announce(msg) {
+      statusBannerText.textContent = msg;
+    }
+
+    function createCell(text, className) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      if (className) td.className = className;
+      return td;
+    }
+
+    async function apiCall(path, method = "GET", body = null) {
+      const opts = { method, headers: { "Content-Type": "application/json" } };
+      if (body !== null) opts.body = JSON.stringify(body);
+      const res = await fetch(path, opts);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || "Request failed");
+      }
+      return data;
+    }
+
+    function populateSelects(nodes) {
+      const srcSel = document.getElementById("src-node");
+      const dstSel = document.getElementById("dst-node");
+      const prevSrc = srcSel.value;
+      const prevDst = dstSel.value;
+      srcSel.replaceChildren();
+      dstSel.replaceChildren();
+
+      for (const n of nodes) {
+        const opt1 = document.createElement("option");
+        opt1.value = n.node_id;
+        opt1.textContent = n.is_revoked ? `${n.node_id} (REVOKED)` : n.node_id;
+        srcSel.appendChild(opt1);
+
+        const opt2 = document.createElement("option");
+        opt2.value = n.node_id;
+        opt2.textContent = n.is_revoked ? `${n.node_id} (REVOKED)` : n.node_id;
+        dstSel.appendChild(opt2);
+      }
+
+      if (prevSrc) srcSel.value = prevSrc;
+      if (prevDst) dstSel.value = prevDst;
+      else if (nodes.length > 1) dstSel.value = nodes[1].node_id;
+    }
+
+    async function refreshStatus() {
+      const snap = await apiCall("/api/v1/status");
+      const activeCount = snap.nodes.filter((n) => !n.is_revoked).length;
+      const revokedCount = snap.nodes.filter((n) => n.is_revoked).length;
+
+      document.getElementById("metric-epoch").textContent = snap.current_epoch;
+      document.getElementById("metric-active-nodes").textContent = activeCount;
+      document.getElementById("metric-revoked-nodes").textContent = revokedCount;
+      document.getElementById("metric-alerts").textContent = snap.metrics.total_alerts;
+      document.getElementById("metric-autorevoke").textContent = snap.metrics.auto_revocations;
+      document.getElementById("metric-entries").textContent = snap.ledger_summary.total_entries;
+      chainHeadEl.textContent = `Chain Head: ${snap.ledger_summary.current_chain_head.slice(0, 16)}...`;
+
+      populateSelects(snap.nodes);
+
+      const graphList = document.getElementById("graph-edges");
+      graphList.replaceChildren();
+      for (const [src, dst] of snap.service_graph.allowed_paths) {
+        const li = document.createElement("li");
+        li.className = "mono";
+        li.textContent = `${src} -> ${dst}`;
+        graphList.appendChild(li);
+      }
+
+      const nodesTbody = document.getElementById("nodes-tbody");
+      nodesTbody.replaceChildren();
+      for (const n of snap.nodes) {
+        const tr = document.createElement("tr");
+        const th = document.createElement("th");
+        th.scope = "row";
+        th.textContent = n.node_id;
+        tr.appendChild(th);
+
+        const statusTd = document.createElement("td");
+        const badge = document.createElement("span");
+        badge.className = n.is_revoked ? "badge badge-revoked" : "badge badge-active";
+        badge.textContent = n.is_revoked ? "REVOKED" : "ACTIVE";
+        statusTd.appendChild(badge);
+        tr.appendChild(statusTd);
+
+        tr.appendChild(createCell(n.signing_fp, "mono"));
+        tr.appendChild(createCell(String(n.key_epoch)));
+
+        const actionTd = document.createElement("td");
+        if (!n.is_revoked) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn-danger";
+          btn.textContent = "Revoke";
+          btn.setAttribute("aria-label", `Revoke ${n.node_id}`);
+          btn.addEventListener("click", () => {
+            pendingRevokeNode = n.node_id;
+            revokeBody.textContent = `Revoke active keys for "${n.node_id}" across all service nodes?`;
+            revokeDialog.showModal();
+          });
+          actionTd.appendChild(btn);
+        } else {
+          actionTd.textContent = "Blocked";
+        }
+        tr.appendChild(actionTd);
+        nodesTbody.appendChild(tr);
+      }
+
+      const alertsTbody = document.getElementById("alerts-tbody");
+      alertsTbody.replaceChildren();
+      if (snap.alerts.length === 0) {
+        const tr = document.createElement("tr");
+        const td = createCell("No security alerts detected.");
+        td.colSpan = 4;
+        tr.appendChild(td);
+        alertsTbody.appendChild(tr);
+      } else {
+        for (const a of snap.alerts) {
+          const tr = document.createElement("tr");
+          const sevTd = document.createElement("td");
+          const badge = document.createElement("span");
+          badge.className = a.severity === "critical" ? "badge badge-critical" : "badge badge-high";
+          badge.textContent = a.severity.toUpperCase();
+          sevTd.appendChild(badge);
+          tr.appendChild(sevTd);
+          tr.appendChild(createCell(a.violated_rule, "mono"));
+          tr.appendChild(createCell(a.actor));
+          tr.appendChild(createCell(a.description));
+          alertsTbody.appendChild(tr);
+        }
+      }
+
+      const ledgerTbody = document.getElementById("ledger-tbody");
+      ledgerTbody.replaceChildren();
+      for (const e of snap.recent_entries) {
+        const tr = document.createElement("tr");
+        tr.appendChild(createCell(String(e.entry_id)));
+        tr.appendChild(createCell(e.actor));
+        tr.appendChild(createCell(e.action, "mono"));
+        tr.appendChild(createCell(e.target));
+        tr.appendChild(createCell(`${e.entry_hash.slice(0, 16)}...`, "mono"));
+        tr.appendChild(createCell(e.is_checkpoint ? "ML-DSA-65" : "—"));
+        ledgerTbody.appendChild(tr);
+      }
+    }
+
+    document.getElementById("btn-refresh").addEventListener("click", async () => {
+      try {
+        await refreshStatus();
+        announce("Telemetry snapshot refreshed.");
+      } catch (err) {
+        announce(`Refresh failed: ${err.message}`);
+      }
+    });
+
+    document.getElementById("btn-rotate").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/authority/rotate", "POST");
+        await refreshStatus();
+        announce(`Rotated to key epoch ${res.epoch} (grace window active).`);
+      } catch (err) {
+        announce(`Rotation failed: ${err.message}`);
+      }
+    });
+
+    document.getElementById("btn-verify-log").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/ledger/verify");
+        announce(res.ok ? `Audit chain verified: ${res.message}` : `Integrity alert: ${res.message}`);
+      } catch (err) {
+        announce(`Verification failed: ${err.message}`);
+      }
+    });
+
+    document.getElementById("btn-backup").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/authority/backup", "POST");
+        await refreshStatus();
+        announce(`Encrypted ML-DSA-65 signed backup saved (${res.size} bytes, sha256=${res.checksum.slice(0, 16)}...).`);
+      } catch (err) {
+        announce(`Backup failed: ${err.message}`);
+      }
+    });
+
+    document.getElementById("btn-simulate-attack").addEventListener("click", async () => {
+      try {
+        const res = await apiCall("/api/v1/scenarios/lateral-movement", "POST");
+        await refreshStatus();
+        announce(`Lateral-movement sequence detected for ${res.actor}; automated revocation status: ${res.is_revoked}.`);
+      } catch (err) {
+        announce(`Scenario failed: ${err.message}`);
+      }
+    });
+
+    document.getElementById("transfer-form").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const sourceNode = document.getElementById("src-node").value;
+      const targetNode = document.getElementById("dst-node").value;
+      const payloadText = document.getElementById("payload-text").value;
+      try {
+        const res = await apiCall("/api/v1/gateway/transfer", "POST", {
+          source_node: sourceNode,
+          target_node: targetNode,
+          payload_text: payloadText,
+        });
+        await refreshStatus();
+        announce(`Encrypted transfer ${sourceNode} -> ${targetNode} verified (${res.bytes_delivered} bytes, ${res.delivery_ms} ms).`);
+      } catch (err) {
+        await refreshStatus();
+        announce(`Transfer blocked: ${err.message}`);
+      }
+    });
+
+    revokeDialog.addEventListener("close", async () => {
+      if (revokeDialog.returnValue === "confirm" && pendingRevokeNode) {
+        try {
+          const res = await apiCall("/api/v1/authority/revoke", "POST", {
+            node_id: pendingRevokeNode,
+            reason: revokeReasonInput.value,
+          });
+          await refreshStatus();
+          announce(`Revoked ${res.node_id} at revocation epoch ${res.revocation_epoch} (max propagation ${res.propagation.max_propagation_ms.toFixed(2)} ms).`);
+        } catch (err) {
+          announce(`Revocation failed: ${err.message}`);
+        }
+      }
+      pendingRevokeNode = null;
+    });
+
+    refreshStatus().catch((err) => announce(`Initial load failed: ${err.message}`));
+    setInterval(() => refreshStatus().catch(() => {}), 5000);
+  </script>
+</body>
+</html>

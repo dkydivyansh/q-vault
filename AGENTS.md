@@ -31,5 +31,6 @@ Do not use informal, hackathon-oriented, or placeholder terminology anywhere in 
 
 ## 4. Documentation Organization
 
-- **`README.md`:** High-level project overview, problem statement, strategic standards context, solution summary, NIST FIPS 204 cryptographic foundation, enterprise use cases, and standards references. Cross-reference `ARCHITECTURE.md` for system internals and operational details.
-- **`ARCHITECTURE.md`:** Detailed system architecture diagram, end-to-end operational flows, security controls and verification matrix, repository structure, environment setup and execution guide, evaluation metrics and resilience testing methodology, and engineering/security constraints.
+- **`README.md`:** High-level project overview, problem statement, strategic standards context, solution summary, NIST FIPS 204 cryptographic foundation, enterprise use cases, and standards references. Cross-reference `docs/` for architecture, SDK, operational, testing, and threat-model documentation.
+- **`docs/`:** Modular technical documentation organized by domain: `docs/architecture.md` (system architecture diagram, operational flows, verification matrix, folder-level repository layout, constraints), `docs/sdk/` (SDK reference), `docs/operations.md` (setup, CLI, web console), `docs/testing.md` (verification suite and observed benchmarks), and `docs/threat-model.md` (assumptions and stated limitations).
+- **Folder-Level Documentation:** Architecture diagrams, control matrices, and repository structure trees in documentation must reference component directories (`src/sdk/`, `src/app/`, `tests/`, `config/`, `docs/`) rather than listing or tagging individual source files.

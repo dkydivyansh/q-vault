@@ -17,18 +17,27 @@ from typing import Optional
 from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import mlkem, mldsa
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.x25519 import (
+    X25519PrivateKey,
+    X25519PublicKey,
+)
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 CTX_HANDSHAKE = b"qvault-handshake-v1"
+CTX_EPOCH = b"qvault-epoch-v1"
 CTX_REVOKE = b"qvault-revoke-v1"
 CTX_LOG = b"qvault-log-v1"
 CTX_BACKUP = b"qvault-backup-v1"
+CTX_RESUMPTION = b"qvault-resumption-v1"
 
 AES_KEY_BYTES = 32
 GCM_NONCE_BYTES = 12
 HKDF_INFO = b"qvault-session-v1"
+
+MLDSA65_PUBKEY_RAW_BYTES = 1952
+MLKEM768_PUBKEY_RAW_BYTES = 1184
+X25519_PUBKEY_RAW_BYTES = 32
 
 
 @dataclass
@@ -97,6 +106,65 @@ def generate_identity_keypair(node_id: str) -> HybridKeyPair:
     )
 
 
+def serialize_public_keys(keypair: HybridKeyPair) -> dict[str, bytes]:
+    """Serialize public identity keys to raw bytes matching FIPS 203/204 sizes."""
+    return {
+        "signing_public": keypair.signing_public.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        ),
+        "kem_public": keypair.kem_public.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        ),
+        "x25519_public": keypair.x25519_private.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        ),
+    }
+
+
+def serialize_private_keys(keypair: HybridKeyPair) -> dict[str, bytes]:
+    """Serialize private identity keys for NodeGateway initialization."""
+    return {
+        "mldsa_private": keypair.signing_private.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ),
+        "mlkem_private": keypair.kem_private.private_bytes(
+            encoding=serialization.Encoding.DER,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ),
+        "x25519_private": keypair.x25519_private.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
+            encryption_algorithm=serialization.NoEncryption(),
+        ),
+    }
+
+
+def load_mldsa_public_key(data: bytes) -> mldsa.MLDSA65PublicKey:
+    """Load an ML-DSA-65 public key from raw (1952B) or DER SPKI bytes."""
+    if len(data) == MLDSA65_PUBKEY_RAW_BYTES:
+        return mldsa.MLDSA65PublicKey.from_public_bytes(data)
+    loaded = serialization.load_der_public_key(data)
+    if not isinstance(loaded, mldsa.MLDSA65PublicKey):
+        raise ValueError("Expected ML-DSA-65 public key")
+    return loaded
+
+
+def load_mlkem_public_key(data: bytes) -> mlkem.MLKEM768PublicKey:
+    """Load an ML-KEM-768 public key from raw (1184B) or DER SPKI bytes."""
+    if len(data) == MLKEM768_PUBKEY_RAW_BYTES:
+        return mlkem.MLKEM768PublicKey.from_public_bytes(data)
+    loaded = serialization.load_der_public_key(data)
+    if not isinstance(loaded, mlkem.MLKEM768PublicKey):
+        raise ValueError("Expected ML-KEM-768 public key")
+    return loaded
+
+
 def perform_handshake_initiator(
     my_keypair: HybridKeyPair,
     peer_kem_public: mlkem.MLKEM768PublicKey,
@@ -114,7 +182,8 @@ def perform_handshake_initiator(
 
     peer_x25519_pub = X25519PublicKey.from_public_bytes(peer_x25519_public_bytes)
     x25519_shared = ephemeral_x25519_private.exchange(peer_x25519_pub)
-    kem_ciphertext, kem_shared_secret = peer_kem_public.encapsulate()
+    # cryptography>=50 encapsulate() returns (shared_secret, ciphertext).
+    kem_shared_secret, kem_ciphertext = peer_kem_public.encapsulate()
 
     combined_secret = x25519_shared + kem_shared_secret
     aes_key = HKDF(

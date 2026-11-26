@@ -8,18 +8,19 @@ serialization and ML-DSA-65 signed checkpoints.
 import hashlib
 import json
 import os
-import struct
 import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from cryptography.hazmat.primitives.asymmetric import mldsa
 
+from .crypto_engine import CTX_LOG
+
 GENESIS_HASH = "0" * 64
 DEFAULT_CHECKPOINT_INTERVAL = 100
-_DSA_CONTEXT = b"qvault-log-v1"
+_DSA_CONTEXT = CTX_LOG
 
 
 @dataclass
@@ -56,9 +57,15 @@ class AuditLedger:
         self._lock = threading.Lock()
         self._entry_count: int = 0
         self._prev_hash: str = GENESIS_HASH
+        self._sinks: List[Callable[[LogEntry], None]] = []
 
         self._ledger_path.parent.mkdir(parents=True, exist_ok=True)
         self._load_tail()
+
+    def register_sink(self, callback: Callable[[LogEntry], None]) -> None:
+        """Register a listener invoked after each entry is durably committed."""
+        with self._lock:
+            self._sinks.append(callback)
 
     def _load_tail(self) -> None:
         if not self._ledger_path.exists():
@@ -166,8 +173,15 @@ class AuditLedger:
 
             self._prev_hash = entry_hash
             self._entry_count += 1
+            sinks = list(self._sinks)
 
-            return entry
+        for sink in sinks:
+            try:
+                sink(entry)
+            except Exception:
+                pass
+
+        return entry
 
     def verify_chain(self) -> dict:
         """Verify SHA-256 hash linkage and ML-DSA-65 checkpoint signatures across the ledger."""

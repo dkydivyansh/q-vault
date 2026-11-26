@@ -28,7 +28,7 @@ Dropping a post-quantum encryption algorithm into an application does not make a
 1. **Quantum-Safe Data Protection:** Hybrid forward-secret sessions (`X25519 + ML-KEM-768`), authenticated encryption (`AES-256-GCM` with strict recipient binding), and post-quantum identity signatures (`ML-DSA-65`).
 2. **Crash-Safe Key Lifecycle Control:** Zero-downtime key rotation with documented grace cutoffs, sub-second cross-node revocation with latency telemetry, atomic Write-Ahead Log (WAL) crash recovery, and authenticated key backups.
 3. **Tamper-Evident, Injection-Proof Audit Telemetry:** Canonicalized single-line JSON logging chained via `SHA-256` and signed at checkpoints using `ML-DSA` for non-repudiation.
-4. **Deterministic, Zero-AI Anomaly Detection & Active Response:** A clock-skew-resilient rule and directed service-graph engine that distinguishes routine administration from privilege escalation and lateral movement—automatically revoking compromised keys in real time.
+4. **Deterministic, Zero-AI Anomaly Detection & Active Response:** A clock-skew-resilient rule and directed service-graph engine that distinguishes routine administration from privilege escalation and lateral movement automatically revoking compromised keys in real time.
 
 ---
 
@@ -46,13 +46,13 @@ Encryption breaks down in production during operational edge cases:
 * **Unclean crashes and damaged backups** mid-rotation can leave a service in an inconsistent state, resurrect previously revoked keys, or silently load corrupted key material.
 
 ### 2.3 The Valid-Credential Blind Spot & Log Forgery
-Cryptographic handshakes only prove that a caller holds a valid key—they cannot detect when an attacker steals an active credential, abuses legitimate access to pivot laterally into restricted services, or injects forged newline payloads into plaintext logs to obscure activity or frame another identity.
+Cryptographic handshakes only prove that a caller holds a valid key they cannot detect when an attacker steals an active credential, abuses legitimate access to pivot laterally into restricted services, or injects forged newline payloads into plaintext logs to obscure activity or frame another identity.
 
 ---
 
 ## 3. Why Now? The Post-Quantum & Zero-Trust Inflection Point
 
-Deploying crypto-agile, zero-trust infrastructure is no longer a speculative research exercise—mandatory transition timelines are actively taking effect:
+Deploying crypto-agile, zero-trust infrastructure is no longer a speculative research exercise  mandatory transition timelines are actively taking effect:
 
 * **Finalized NIST PQC Standards (August 2024):** NIST formally standardized **FIPS 203 (ML-KEM)**, **FIPS 204 (ML-DSA)**, and **FIPS 205 (SLH-DSA)** after an eight-year public evaluation of 82 candidate submissions, giving engineers vetted, drop-in primitives.
 * **NIST IR 8547 Transition Deadlines (Finalized October 2026):** NIST's post-quantum transition roadmap schedules formal deprecation of quantum-vulnerable public-key algorithms (RSA, ECDSA, EdDSA, ECDH) after **2030** and complete disallowance after **2035**, while affirming hybrid key establishment (`X25519 + ML-KEM`) as a durable migration path.
@@ -103,9 +103,15 @@ Q-Vault Sentinel directly operationalizes the security assurances and implementa
 
 ## 6. Architecture Overview
 
-Q-Vault Sentinel separates responsibilities across four interconnected operational planes—**Control Plane** (`src/authority.py`), **Data Plane** (`src/gateway.py`), **Telemetry Plane** (`src/ledger.py`), and **Detection & Response** (`src/detector.py`)—unified by a shared cryptographic engine (`src/crypto_engine.py`) and an operator CLI (`src/console.py`).
+Q-Vault Sentinel separates responsibilities across a composable security SDK (`src/sdk/`), a runnable control-plane and service application layer (`src/app/`), and an automated verification suite (`tests/`), uniting **Control Plane**, **Data Plane**, **Telemetry Plane**, and **Detection & Response** in a single closed-loop platform.
 
-For the full system architecture diagram, end-to-end operational flows, security controls and verification matrix, repository layout, deployment instructions, evaluation metrics, and engineering constraints, see **[`ARCHITECTURE.md`](ARCHITECTURE.md)**.
+For detailed system documentation, see:
+
+* **[System Architecture & Flows](docs/architecture.md)** — Architecture diagram, end-to-end flows, security verification matrix, folder structure, and engineering constraints
+* **[SDK Reference](docs/sdk/overview.md)** — Core post-quantum cryptography, authority, gateway, ledger, and watchdog interfaces (`src/sdk/`)
+* **[Operations & Deployment Guide](docs/operations.md)** — Environment setup, configuration, operator CLI, and Web Console usage (`src/app/`)
+* **[Verification & Benchmarks](docs/testing.md)** — Automated `tests/` coverage, benchmark methodology, and observed metrics
+* **[Threat Model & Limitations](docs/threat-model.md)** — Adversary capabilities, trust assumptions, and explicit design limits
 
 ---
 

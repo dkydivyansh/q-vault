@@ -13,22 +13,28 @@ import sqlite3
 import struct
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Iterator, List, Optional
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import mldsa
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-CTX_EPOCH = b"qvault-epoch-v1"
-CTX_REVOKE = b"qvault-revoke-v1"
-CTX_BACKUP = b"qvault-backup-v1"
+from .crypto_engine import (
+    CTX_BACKUP,
+    CTX_EPOCH,
+    CTX_REVOKE,
+    MLDSA65_PUBKEY_RAW_BYTES,
+    MLKEM768_PUBKEY_RAW_BYTES,
+    X25519_PUBKEY_RAW_BYTES,
+)
 
-MLDSA65_PUBKEY_BYTES = 1952
-MLKEM768_PUBKEY_BYTES = 1184
-X25519_PUBKEY_BYTES = 32
+MLDSA65_PUBKEY_BYTES = MLDSA65_PUBKEY_RAW_BYTES
+MLKEM768_PUBKEY_BYTES = MLKEM768_PUBKEY_RAW_BYTES
+X25519_PUBKEY_BYTES = X25519_PUBKEY_RAW_BYTES
 
 
 @dataclass
@@ -82,9 +88,11 @@ class KeyAuthority:
             raise ValueError(f"master_kek must be 32 bytes; got {len(raw_kek)}")
         self._master_kek: bytes = raw_kek
         self._db_path: str = db_path
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
+        # isolation_level=None disables implicit transactions so explicit BEGIN IMMEDIATE/COMMIT/ROLLBACK control atomicity.
         self._conn: sqlite3.Connection = sqlite3.connect(
-            db_path, check_same_thread=False
+            db_path, check_same_thread=False, isolation_level=None
         )
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
@@ -98,17 +106,37 @@ class KeyAuthority:
         self._lock: threading.RLock = threading.RLock()
         self._active_revocations: Dict[int, RevocationNotice] = {}
 
-        self._auth_signing_private: mldsa.MLDSAPrivateKey
-        self._auth_signing_public: mldsa.MLDSAPublicKey
+        self._auth_signing_private: mldsa.MLDSA65PrivateKey
+        self._auth_signing_public: mldsa.MLDSA65PublicKey
         self._load_or_generate_authority_keys()
 
         self._reload_epoch_counter()
         self._reload_revocation_counter()
 
+    @property
+    def current_epoch(self) -> int:
+        with self._lock:
+            return self._current_epoch
+
+    @property
+    def revocation_epoch(self) -> int:
+        with self._lock:
+            return self._revocation_epoch
+
+    @contextmanager
+    def _write_tx(self) -> Iterator[None]:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except Exception:
+            if self._conn.in_transaction:
+                self._conn.execute("ROLLBACK")
+            raise
+        else:
+            self._conn.execute("COMMIT")
+
     def _init_db(self) -> None:
-        with self._conn:
-            # Acquire write lock up front so concurrent writers serialize cleanly.
-            self._conn.execute("BEGIN IMMEDIATE")
+        with self._write_tx():
             self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS nodes (
                     node_id        TEXT PRIMARY KEY,
@@ -154,7 +182,13 @@ class KeyAuthority:
                     ciphertext  BLOB NOT NULL
                 )
             """)
-            self._conn.execute("COMMIT")
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS ledger_keys (
+                    id          INTEGER PRIMARY KEY CHECK (id = 1),
+                    nonce       BLOB NOT NULL,
+                    ciphertext  BLOB NOT NULL
+                )
+            """)
 
     def _load_or_generate_authority_keys(self) -> None:
         row = self._conn.execute(
@@ -162,7 +196,7 @@ class KeyAuthority:
         ).fetchone()
 
         if row is None:
-            private_key = mldsa.generate_private_key(mldsa.MLDSA65())
+            private_key = mldsa.MLDSA65PrivateKey.generate()
             private_der = private_key.private_bytes(
                 encoding=serialization.Encoding.DER,
                 format=serialization.PrivateFormat.PKCS8,
@@ -171,13 +205,11 @@ class KeyAuthority:
             nonce = secrets.token_bytes(12)
             ciphertext = AESGCM(self._master_kek).encrypt(nonce, private_der, None)
 
-            with self._conn:
-                self._conn.execute("BEGIN IMMEDIATE")
+            with self._write_tx():
                 self._conn.execute(
                     "INSERT INTO authority_keys (id, nonce, ciphertext) VALUES (1, ?, ?)",
                     (nonce, ciphertext),
                 )
-                self._conn.execute("COMMIT")
 
             self._auth_signing_private = private_key
             self._auth_signing_public = private_key.public_key()
@@ -221,14 +253,12 @@ class KeyAuthority:
         except Exception:
             return False
 
-    def register_node(
+    def _validate_public_key_lengths(
         self,
-        node_id: str,
         signing_public_bytes: bytes,
         kem_public_bytes: bytes,
         x25519_public_bytes: bytes,
-    ) -> NodeRecord:
-        """Validate public key sizes and register a new node atomically."""
+    ) -> None:
         if len(signing_public_bytes) != MLDSA65_PUBKEY_BYTES:
             raise ValueError(
                 f"ML-DSA-65 public key must be {MLDSA65_PUBKEY_BYTES} bytes; "
@@ -245,12 +275,22 @@ class KeyAuthority:
                 f"got {len(x25519_public_bytes)}"
             )
 
+    def register_node(
+        self,
+        node_id: str,
+        signing_public_bytes: bytes,
+        kem_public_bytes: bytes,
+        x25519_public_bytes: bytes,
+    ) -> NodeRecord:
+        """Validate public key sizes and register a new node atomically."""
+        self._validate_public_key_lengths(
+            signing_public_bytes, kem_public_bytes, x25519_public_bytes
+        )
         registered_at = time.time()
 
         with self._lock:
-            with self._conn:
-                self._conn.execute("BEGIN IMMEDIATE")
-                try:
+            try:
+                with self._write_tx():
                     self._conn.execute(
                         """
                         INSERT INTO nodes
@@ -267,20 +307,40 @@ class KeyAuthority:
                             registered_at,
                         ),
                     )
-                    self._conn.execute("COMMIT")
-                except sqlite3.IntegrityError as exc:
-                    self._conn.execute("ROLLBACK")
-                    raise ValueError(
-                        f"Node '{node_id}' is already registered."
-                    ) from exc
+            except sqlite3.IntegrityError as exc:
+                raise ValueError(f"Node '{node_id}' is already registered.") from exc
+
+            epoch_at_reg = self._current_epoch
 
         return NodeRecord(
             node_id=node_id,
             signing_public_bytes=signing_public_bytes,
             kem_public_bytes=kem_public_bytes,
             x25519_public_bytes=x25519_public_bytes,
-            key_epoch=self._current_epoch,
+            key_epoch=epoch_at_reg,
             registered_at=registered_at,
+        )
+
+    def re_enroll_node(
+        self,
+        new_node_id: str,
+        signing_public_bytes: bytes,
+        kem_public_bytes: bytes,
+        x25519_public_bytes: bytes,
+        previous_node_id: str,
+    ) -> NodeRecord:
+        """Register a replacement keypair while enforcing that `previous_node_id` remains revoked."""
+        if new_node_id == previous_node_id:
+            raise ValueError("Replacement node_id must differ from revoked node_id.")
+        if not self.is_revoked(previous_node_id):
+            raise ValueError(
+                f"Previous node '{previous_node_id}' must be revoked before re-enrollment."
+            )
+        return self.register_node(
+            node_id=new_node_id,
+            signing_public_bytes=signing_public_bytes,
+            kem_public_bytes=kem_public_bytes,
+            x25519_public_bytes=x25519_public_bytes,
         )
 
     def rotate_keys(
@@ -308,8 +368,7 @@ class KeyAuthority:
 
             signature = self._sign(announcement, CTX_EPOCH)
 
-            with self._conn:
-                self._conn.execute("BEGIN IMMEDIATE")
+            with self._write_tx():
                 self._conn.execute(
                     """
                     INSERT INTO epochs (epoch, valid_from, grace_until, cutoff, signature)
@@ -317,7 +376,6 @@ class KeyAuthority:
                     """,
                     (new_epoch, valid_from, grace_until, cutoff, signature),
                 )
-                self._conn.execute("COMMIT")
 
             rotation = RotationEpoch(
                 epoch=new_epoch,
@@ -348,7 +406,7 @@ class KeyAuthority:
         if epoch == current - 1:
             row = self._conn.execute(
                 "SELECT grace_until FROM epochs WHERE epoch = ?",
-                (epoch,),
+                (current,),
             ).fetchone()
             if row is None:
                 return False
@@ -385,8 +443,7 @@ class KeyAuthority:
 
             signature = self._sign(payload, CTX_REVOKE)
 
-            with self._conn:
-                self._conn.execute("BEGIN IMMEDIATE")
+            with self._write_tx():
                 self._conn.execute(
                     "UPDATE nodes SET is_revoked = 1, revoked_at = ? WHERE node_id = ?",
                     (revoked_at, node_id),
@@ -399,7 +456,6 @@ class KeyAuthority:
                     """,
                     (node_id, rev_epoch, revoked_at, reason, signature),
                 )
-                self._conn.execute("COMMIT")
 
             notice = RevocationNotice(
                 node_id=node_id,
@@ -435,13 +491,11 @@ class KeyAuthority:
         self, node_id: str, revocation_epoch: int, acked_at: float
     ) -> None:
         """Persist a node's revocation acknowledgment for latency tracking."""
-        with self._conn:
-            self._conn.execute("BEGIN IMMEDIATE")
+        with self._write_tx():
             self._conn.execute(
                 "INSERT INTO ack_log (node_id, revocation_epoch, acked_at) VALUES (?, ?, ?)",
                 (node_id, revocation_epoch, acked_at),
             )
-            self._conn.execute("COMMIT")
 
         with self._lock:
             notice = self._active_revocations.get(revocation_epoch)
@@ -464,7 +518,7 @@ class KeyAuthority:
         all_acks = []
         propagation_ms_values = []
         for node_id, acked_at in rows:
-            prop_ms = (acked_at - revoked_at) * 1000.0
+            prop_ms = max(0.0, (acked_at - revoked_at) * 1000.0)
             propagation_ms_values.append(prop_ms)
             all_acks.append(
                 {
@@ -573,13 +627,11 @@ class KeyAuthority:
         new_nonce = secrets.token_bytes(12)
         new_ciphertext = AESGCM(self._master_kek).encrypt(new_nonce, private_der, None)
 
-        with self._conn:
-            self._conn.execute("BEGIN IMMEDIATE")
+        with self._write_tx():
             self._conn.execute(
                 "INSERT OR REPLACE INTO authority_keys (id, nonce, ciphertext) VALUES (1, ?, ?)",
                 (new_nonce, new_ciphertext),
             )
-            self._conn.execute("COMMIT")
 
         with self._lock:
             self._auth_signing_private = private_key  # type: ignore[assignment]
@@ -645,6 +697,58 @@ class KeyAuthority:
             )
             for row in rows
         ]
+
+    def list_revocations(self) -> List[dict]:
+        """Return recorded revocation entries ordered by revocation epoch."""
+        rows = self._conn.execute(
+            """
+            SELECT node_id, revocation_epoch, revoked_at, reason
+            FROM revocations
+            ORDER BY revocation_epoch ASC
+            """
+        ).fetchall()
+        return [
+            {
+                "node_id": r[0],
+                "revocation_epoch": r[1],
+                "revoked_at": r[2],
+                "reason": r[3],
+            }
+            for r in rows
+        ]
+
+    def get_or_create_ledger_signing_key(self) -> mldsa.MLDSA65PrivateKey:
+        """Load or generate a dedicated ML-DSA-65 keypair for audit ledger checkpoints."""
+        row = self._conn.execute(
+            "SELECT nonce, ciphertext FROM ledger_keys WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            private_key = mldsa.MLDSA65PrivateKey.generate()
+            private_der = private_key.private_bytes(
+                encoding=serialization.Encoding.DER,
+                format=serialization.PrivateFormat.PKCS8,
+                encryption_algorithm=serialization.NoEncryption(),
+            )
+            nonce = secrets.token_bytes(12)
+            ciphertext = AESGCM(self._master_kek).encrypt(nonce, private_der, None)
+            with self._write_tx():
+                self._conn.execute(
+                    "INSERT INTO ledger_keys (id, nonce, ciphertext) VALUES (1, ?, ?)",
+                    (nonce, ciphertext),
+                )
+            return private_key
+
+        nonce, ciphertext = row
+        try:
+            private_der = AESGCM(self._master_kek).decrypt(
+                bytes(nonce), bytes(ciphertext), None
+            )
+        except InvalidTag as exc:
+            raise ValueError(
+                "Master KEK did not authenticate the stored ledger key."
+            ) from exc
+        loaded = serialization.load_der_private_key(private_der, password=None)
+        return loaded  # type: ignore[return-value]
 
     def get_authority_public_key_bytes(self) -> bytes:
         """Return DER-encoded ML-DSA-65 public key for offline signature verification."""

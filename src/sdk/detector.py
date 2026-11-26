@@ -11,7 +11,6 @@ Implements deterministic, rule-and-graph-based threat detection (zero AI/ML):
 
 import collections
 import hashlib
-import json
 import statistics
 import threading
 import time
@@ -71,6 +70,7 @@ class Alert:
     detected_at: float
     ordering_uncertain: bool = False
     auto_revoke_triggered: bool = False
+    violated_path: Optional[str] = None
 
 
 @dataclass
@@ -111,7 +111,21 @@ class ClockSkewBuffer:
         self._tolerance = tolerance_seconds
         self._max_buffer_size = max_buffer_size
         self._buffer: List[LogEvent] = []
+        self._last_settled_ts: Optional[float] = None
         self._lock = threading.Lock()
+
+    def _mark_uncertain(self, events: List[LogEvent]) -> None:
+        if events and self._last_settled_ts is not None:
+            if abs(events[0].timestamp - self._last_settled_ts) < self._tolerance:
+                events[0].ordering_uncertain = True
+        for idx in range(len(events) - 1):
+            t_a = events[idx].timestamp
+            t_b = events[idx + 1].timestamp
+            if abs(t_a - t_b) < self._tolerance:
+                events[idx].ordering_uncertain = True
+                events[idx + 1].ordering_uncertain = True
+        if events:
+            self._last_settled_ts = events[-1].timestamp
 
     def ingest(self, event: LogEvent) -> List[LogEvent]:
         """Buffer event and release settled events sorted by timestamp."""
@@ -126,13 +140,7 @@ class ClockSkewBuffer:
                 return []
 
             settled_events: List[LogEvent] = [self._buffer[i] for i in settled_indices]
-
-            for idx in range(len(settled_events) - 1):
-                t_a = settled_events[idx].timestamp
-                t_b = settled_events[idx + 1].timestamp
-                if abs(t_a - t_b) < self._tolerance:
-                    settled_events[idx].ordering_uncertain = True
-                    settled_events[idx + 1].ordering_uncertain = True
+            self._mark_uncertain(settled_events)
 
             # Delete in reverse order so earlier list indices remain valid.
             for i in reversed(settled_indices):
@@ -142,6 +150,17 @@ class ClockSkewBuffer:
                 self._buffer = self._buffer[-self._max_buffer_size:]
 
             return settled_events
+
+    def flush(self) -> List[LogEvent]:
+        """Drain and return all buffered events in timestamp order."""
+        with self._lock:
+            if not self._buffer:
+                return []
+            self._buffer.sort(key=lambda e: e.timestamp)
+            drained = list(self._buffer)
+            self._mark_uncertain(drained)
+            self._buffer.clear()
+            return drained
 
 
 class ServiceAccessGraph:
@@ -153,7 +172,7 @@ class ServiceAccessGraph:
             if len(path) >= 2:
                 self._allowed.add((path[0], path[1]))
 
-        self._actor_history: Dict[str, List[Tuple[float, str, str]]] = collections.defaultdict(list)
+        self._actor_history: Dict[str, List[Tuple[float, str, str, str]]] = collections.defaultdict(list)
 
     def is_path_allowed(self, source: str, target: str) -> bool:
         """Return True when (source -> target) is permitted or intra-service."""
@@ -161,20 +180,25 @@ class ServiceAccessGraph:
             return True
         return (source, target) in self._allowed
 
-    def record_access(self, actor: str, source: str, target: str, timestamp: float) -> None:
+    def record_access(
+        self, actor: str, source: str, target: str, timestamp: float, event_id: str = ""
+    ) -> None:
         """Record a service-to-service transition for `actor`."""
-        self._actor_history[actor].append((timestamp, source, target))
+        self._actor_history[actor].append((timestamp, source, target, event_id))
 
     def check_lateral_movement(
         self,
         actor: str,
         window_seconds: float = 60.0,
         max_hops: int = 3,
+        reference_time: Optional[float] = None,
     ) -> Optional[dict]:
         """Return violation details when recent hops meet `max_hops` and break policy."""
-        cutoff = time.time() - window_seconds
+        ref = reference_time if reference_time is not None else time.time()
+        cutoff = ref - window_seconds
         history = self._actor_history.get(actor, [])
-        recent_hops = [(src, dst) for ts, src, dst in history if ts >= cutoff]
+        recent = [(src, dst, eid) for ts, src, dst, eid in history if ts >= cutoff]
+        recent_hops = [(src, dst) for src, dst, _ in recent]
 
         if len(recent_hops) < max_hops:
             return None
@@ -183,10 +207,12 @@ class ServiceAccessGraph:
         if not violated:
             return None
 
+        event_ids = [eid for _, _, eid in recent if eid]
         return {
             "actor": actor,
             "hops": recent_hops,
             "violated_paths": violated,
+            "event_ids": event_ids,
             "window_seconds": window_seconds,
         }
 
@@ -199,8 +225,8 @@ class ServiceAccessGraph:
         allowed_list = [[src, dst] for src, dst in sorted(self._allowed)]
         history_summary = {
             actor: [
-                {"timestamp": ts, "source": src, "target": dst}
-                for ts, src, dst in accesses[-20:]
+                {"timestamp": ts, "source": src, "target": dst, "event_id": eid}
+                for ts, src, dst, eid in accesses[-20:]
             ]
             for actor, accesses in self._actor_history.items()
         }
@@ -291,6 +317,29 @@ class RuleEngine:
         )
 
 
+    def check_replay_event(self, event: LogEvent) -> Optional[Alert]:
+        """Flag replay telemetry events emitted by node gateways."""
+        if event.action.upper() != "REPLAY_DETECTED":
+            return None
+        alert_id = _make_alert_id(AlertType.REPLAY_ATTACK.value, event.actor, event.event_id)
+        return Alert(
+            alert_id=alert_id,
+            alert_type=AlertType.REPLAY_ATTACK,
+            severity=Severity.HIGH,
+            actor=event.actor,
+            description=(
+                f"Replay attack detected involving actor '{event.actor}' "
+                f"from '{event.source_service}' to '{event.target_service}'."
+            ),
+            event_ids=[event.event_id],
+            violated_rule=AlertType.REPLAY_ATTACK.value,
+            services_involved=[event.source_service, event.target_service],
+            detected_at=time.time(),
+            ordering_uncertain=event.ordering_uncertain,
+            violated_path=f"{event.source_service}->{event.target_service}",
+        )
+
+
 def _make_alert_id(rule: str, actor: str, event_id: str) -> str:
     raw = f"{rule}:{actor}:{event_id}:{time.time_ns()}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
@@ -349,8 +398,21 @@ class WatchdogDetector:
 
             return new_alerts
 
+    def flush(self) -> List[Alert]:
+        """Flush buffered events and evaluate them immediately."""
+        with self._lock:
+            drained = self._clock_buffer.flush()
+            new_alerts: List[Alert] = []
+            for event in drained:
+                new_alerts.extend(self._process_event(event))
+            return new_alerts
+
     def _process_event(self, event: LogEvent) -> List[Alert]:
         new_alerts: List[Alert] = []
+
+        replay_alert = self._rules.check_replay_event(event)
+        if replay_alert:
+            new_alerts.append(replay_alert)
 
         revoked_alert = self._rules.check_revoked_access(event, self._revoked_nodes)
         if revoked_alert:
@@ -380,6 +442,7 @@ class WatchdogDetector:
                     services_involved=[event.source_service, event.target_service],
                     detected_at=time.time(),
                     ordering_uncertain=event.ordering_uncertain,
+                    violated_path=f"{event.source_service}->{event.target_service}",
                 )
                 new_alerts.append(path_alert)
 
@@ -388,12 +451,14 @@ class WatchdogDetector:
             source=event.source_service,
             target=event.target_service,
             timestamp=event.timestamp,
+            event_id=event.event_id,
         )
 
         lat_result = self._graph.check_lateral_movement(
             actor=event.actor,
             window_seconds=self._lateral_window,
             max_hops=self._lateral_max_hops,
+            reference_time=event.timestamp,
         )
         if lat_result:
             involved_services: List[str] = []
@@ -404,7 +469,8 @@ class WatchdogDetector:
                         involved_services.append(svc)
                         seen.add(svc)
 
-            contributing_ids = [event.event_id]
+            contributing_ids = list(dict.fromkeys(lat_result["event_ids"] or [event.event_id]))
+            violated_path_str = ", ".join(f"{s}->{d}" for s, d in lat_result["violated_paths"])
             alert_id = _make_alert_id(
                 AlertType.LATERAL_MOVEMENT.value + "_win", event.actor, event.event_id
             )
@@ -417,13 +483,14 @@ class WatchdogDetector:
                     f"Lateral movement detected: actor '{event.actor}' made "
                     f"{len(lat_result['hops'])} hops in {lat_result['window_seconds']}s "
                     f"with {len(lat_result['violated_paths'])} policy violation(s): "
-                    + ", ".join(f"{s}→{d}" for s, d in lat_result["violated_paths"])
+                    + violated_path_str
                 ),
                 event_ids=contributing_ids,
                 violated_rule=AlertType.LATERAL_MOVEMENT.value,
                 services_involved=involved_services,
                 detected_at=time.time(),
                 ordering_uncertain=event.ordering_uncertain,
+                violated_path=violated_path_str,
             )
             new_alerts.append(lat_alert)
 
@@ -432,29 +499,44 @@ class WatchdogDetector:
             new_alerts.append(rapid_hop_alert)
 
         for alert in new_alerts:
-            if alert.severity == Severity.CRITICAL:
+            if self._severity_scores.get(alert.severity, 0.0) >= self._critical_threshold:
                 self._trigger_auto_revocation(alert)
 
         self._alerts.extend(new_alerts)
         return new_alerts
 
     def _check_rapid_service_hops(self, event: LogEvent) -> Optional[Alert]:
+        if event.actor in self._rules._admin_nodes or self._rules.is_in_maintenance_window(
+            event.actor, event.timestamp
+        ):
+            return None
+
         rapid_window = 30.0
         max_distinct = 3
-        cutoff = time.time() - rapid_window
+        cutoff = event.timestamp - rapid_window
 
         history = self._graph._actor_history.get(event.actor, [])
         recent_services: Set[str] = set()
-        contributing_event_ids: List[str] = [event.event_id]
-        for ts, src, dst in history:
+        contributing_event_ids: List[str] = []
+        has_unauthorized_hop = not self._graph.is_path_allowed(
+            event.source_service, event.target_service
+        )
+        for ts, src, dst, eid in history:
             if ts >= cutoff:
                 recent_services.add(src)
                 recent_services.add(dst)
+                if not self._graph.is_path_allowed(src, dst):
+                    has_unauthorized_hop = True
+                if eid:
+                    contributing_event_ids.append(eid)
 
         recent_services.add(event.source_service)
         recent_services.add(event.target_service)
+        if event.event_id:
+            contributing_event_ids.append(event.event_id)
+        contributing_event_ids = list(dict.fromkeys(contributing_event_ids))
 
-        if len(recent_services) <= max_distinct:
+        if len(recent_services) <= max_distinct or not has_unauthorized_hop:
             return None
 
         alert_id = _make_alert_id(AlertType.RAPID_SERVICE_HOP.value, event.actor, event.event_id)
@@ -472,6 +554,7 @@ class WatchdogDetector:
             services_involved=sorted(recent_services),
             detected_at=time.time(),
             ordering_uncertain=event.ordering_uncertain,
+            violated_path=f"{event.source_service}->{event.target_service}",
         )
 
     def _trigger_auto_revocation(self, alert: Alert) -> None:
@@ -503,6 +586,7 @@ class WatchdogDetector:
         for event in events:
             alerts = self.ingest_event(event)
             generated_alerts.extend(alerts)
+        generated_alerts.extend(self.flush())
 
         alerted_event_ids: Set[str] = set()
         event_to_alerts: Dict[str, List[Alert]] = collections.defaultdict(list)
@@ -533,6 +617,9 @@ class WatchdogDetector:
                 metrics.false_positives += 1
             else:
                 metrics.true_negatives += 1
+
+        with self._lock:
+            self._metrics = metrics
 
         return metrics
 
